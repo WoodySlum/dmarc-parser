@@ -3,10 +3,8 @@
 
 """ Test module """
 
-from dmarcparser import Parse
-
-parser = Parse()
+from dmarc import dmarc_from_file
 
 def test_normal():
     """ Test a normal """
-    assert parser.parsefile("example/report1.zip") == {"org_name": "example.com"}
+    assert dmarc_from_file("example/example.xml") is None

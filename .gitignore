@@ -19,4 +19,4 @@ build/
 log.txt
 
 # Ignore examples
-example/
+example/private
