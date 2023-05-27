@@ -19,7 +19,7 @@ def _parse_file(path: str, queue_name: str, queue: Queue, debug_level: int = log
     Part of the support library and should not be used directly.
     """
 
-    parser = DmarcParser(queue, queue_name, debug_level)
+    parser = DmarcParser(queue_name, queue, debug_level)
     parser.read_file(path)
 
 def dmarc_from_folder(folder: str, recursive: bool = False, debug_level: int = logging.INFO):

@@ -45,7 +45,7 @@ class DmarcParser():
     XML_SIGNATURE = b"\x3C\x3F\x78\x6D\x6C\x20"
 
     # pylint: disable-next=line-too-long
-    def __init__(self, queue: Queue = None, queue_name: str = _unique_logger_id(), debug_level=logging.INFO):
+    def __init__(self, queue_name: str = _unique_logger_id(), queue: Queue = None, debug_level: int = logging.INFO):
         self.logger = _custom_logger(
             name=queue_name,
             queue=queue,
@@ -65,7 +65,7 @@ class DmarcParser():
         if not path.exists() or not path.is_file():
             self.logger.debug("File %s could not be accessed", path)
             return None
-        self.logger.debug("Found file %s", path)
+        self.logger.debug("Reading %s", path)
         try:
             open_file = path.open("rb")
         except FileNotFoundError:
@@ -89,8 +89,8 @@ class DmarcParser():
         elif "forensic" in report:
             output = self.parse_forensic_report(report)
 
-        if output:
-            self.logger.debug(output)
+        # if output:
+        #     self.logger.debug(output)
 
         return {}
 
@@ -262,8 +262,8 @@ class DmarcParser():
                     if not report:
                         continue
                     output[report] = payload
-        if output:
-            self.logger.debug(output)
+        # if output:
+        #     self.logger.debug(output)
         return output
 
     def parse_aggregate_report(self, report: dict) -> AggregateReport:
@@ -304,7 +304,10 @@ class DmarcParser():
         if "forensic" not in report and "report" in report["forensic"]:
             return None
 
-        return forensic_report_from_string(report["forensic"]["report"], report["forensic"]["sample"])
+        return forensic_report_from_string(
+            report["forensic"]["report"],
+            report["forensic"]["sample"],
+        )
 
     def _get_file_data(self, data: bytes) -> dict:
         """ Guesses the signature and then extract xml-data """

@@ -1,12 +1,23 @@
 [![Package](https://github.com/andersnauman/dmarc-parser/actions/workflows/python-package.yml/badge.svg)](https://github.com/andersnauman/dmarc-parser/actions/workflows/python-package.yml) [![Pylint](https://github.com/andersnauman/dmarc-parser/actions/workflows/pylint.yml/badge.svg)](https://github.com/andersnauman/dmarc-parser/actions/workflows/pylint.yml)
 ## DMARC Parser
-### Public helper functions
+### Public helper methods
+These methods are only included for your convenience. Code is "not" part of the main library/parser but act as a great segway to implement the parser with ease.
 ```
-    dmarc_from_folder(folder: str, recursive: bool, debug_level: int)
-    dmarc_from_file(path: str, debug_level: int):
+    from dmarc import dmarc_from_folder, dmarc_from_file
+
+    Multi-threaded:    dmarc_from_folder(folder: str, recursive: bool, debug_level: int)
+    Single-threaded:   dmarc_from_file(path: str, debug_level: int):
 ```
 
-`Please note: dmarc_from_folder() is, by default, multi-threaded (using multiprocessing), while dmarc_from_file() is not`
+### Public class / methods
+```
+    DmarcParser(queue_name: str, queue: Queue, debug_level: int)        # Queue is for logging and optional. 
+        .read_file(path: str)
+        .extract_report_from_zip(data: io.BytesIO) -> dict
+        .extract_report_from_gzip(data: io.BytesIO) -> dict
+        .extract_report_from_xml(data: bytes) -> dict
+        .extract_report_from_eml(data: bytes) -> dict
+```
 
 ### Minimal example program
 ```
@@ -32,4 +43,21 @@ if __name__ == "__main__":
     if args.verbose:
         run_args["debug_level"] = logging.DEBUG
     run(**run_args)
+```
+
+### Install instructions
+```
+# Production
+pip install .
+
+# Development
+## Setup
+python -m venv env
+.\env\Scripts\activate
+
+## Install
+pip install .
+
+## Test
+python -m pytest
 ```
