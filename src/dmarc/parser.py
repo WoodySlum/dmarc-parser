@@ -78,8 +78,6 @@ class DmarcParser():
         if not report:
             return None
 
-        #self.logger.debug("Report-Data: %s", xml)
-
         output = None
         if "aggregate" in report:
             try:
@@ -89,10 +87,7 @@ class DmarcParser():
         elif "forensic" in report:
             output = self.parse_forensic_report(report)
 
-        # if output:
-        #     self.logger.debug(output)
-
-        return {}
+        return output.get_dict()
 
     def extract_report_from_zip(self, data: io.BytesIO) -> dict:
         """
@@ -210,10 +205,6 @@ class DmarcParser():
         msg = message_from_bytes(data, _class=EmailMessage)
 
         for attachment in msg.iter_attachments():
-            #self.logger.debug("Found attachmnet: %s", attachment.get_filename())
-            #self.logger.debug("Content-type: %s", attachment.get_content_type())
-            #self.logger.debug("Multipart: %s", attachment.is_multipart())
-
             content_type = attachment.get_content_type()
             payload = attachment.get_payload()
 
@@ -262,8 +253,7 @@ class DmarcParser():
                     if not report:
                         continue
                     output[report] = payload
-        # if output:
-        #     self.logger.debug(output)
+
         return output
 
     def parse_aggregate_report(self, report: dict) -> AggregateReport:
