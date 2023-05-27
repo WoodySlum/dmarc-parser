@@ -51,9 +51,9 @@ def dmarc_from_folder(folder, recursive=False, debug_level=logging.INFO):
 def dmarc_from_file(file, debug_level=logging.INFO):
     """ Parse a file """
     if not os.path.exists(file):
-        return
+        return None
     if not os.path.isfile(file):
-        return
+        return None
     parser = DmarcParser(debug_level)
     parser.read_file(Path(file))
 
