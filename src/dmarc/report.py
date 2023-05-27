@@ -8,6 +8,9 @@ import xml.etree.ElementTree as elementTree
 
 from datetime import datetime
 from dataclasses import dataclass
+from email import message_from_bytes
+from email.message import EmailMessage
+from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from .misc import _sanitize_input
 
@@ -20,6 +23,19 @@ class InvalidOrgName(Exception):
     """ Exception raised for error in the organization name """
     def __init__(self, msg):
         super().__init__(msg)
+
+class InvalidForensicSample(Exception):
+    """ Exception raised for error in the sample """
+    def __init__(self, msg):
+        super().__init__(msg)
+
+class UnknownKey(Exception):
+    """ Exception raised for unknown keys in the key/value pairs """
+    def __init__(self, msg):
+        super().__init__(msg)
+
+# RFC 7489
+# https://datatracker.ietf.org/doc/html/rfc7489
 
 @dataclass
 class Metadata:
@@ -39,6 +55,26 @@ class PolicyPublished:
     policy_p: str = None
     policy_sp: str = None
     policy_pct: int = None
+
+@dataclass
+# pylint: disable-next=too-many-instance-attributes
+class Record:
+    """ d """
+    record_source_ipv4: IPv4Address = None
+    record_source_ipv6: IPv6Address = None
+    record_count: int = None
+
+    # Row / Policy Evaluated
+    record_eval_disposition: str = None
+    record_eval_dkim: str = None
+    record_eval_spf: str = None
+
+    # Identifiers
+    record_header_from: str = None
+
+    # Auth Results
+    record_spf_domain:str = None
+    record_spf_result:str = None
 
 class AggregateReport():
     """
@@ -62,19 +98,17 @@ class AggregateReport():
 
     def set_org_name(self, org_name):
         """ d """
-        self.dict["org_name"] = _sanitize_input(org_name)
         self.metadata.org_name = _sanitize_input(org_name)
         if not self.metadata.org_name:
             raise InvalidOrgName("Organization name cannot be empty")
 
     def set_email(self, email):
         """ d """
-        self.dict["email"] = _sanitize_input(email)
         self.metadata.email = _sanitize_input(email)
 
     def set_report_id(self, report_id):
         """ d """
-        self.dict["report_id"] = _sanitize_input(report_id)
+        self.metadata.report_id = _sanitize_input(report_id)
 
     def set_date_begin(self, date_begin):
         """ d """
@@ -83,9 +117,9 @@ class AggregateReport():
                 date_begin = int(date_begin)
             except ValueError:
                 date_begin = 0
-        if datetime.fromtimestamp(date_begin) > datetime.now():
+        if date_begin == 0 or datetime.fromtimestamp(date_begin) > datetime.now():
             raise InvalidTime("Date begin is in the future")
-        self.dict["date_begin"] = date_begin
+        self.metadata.date_begin = date_begin
 
     def set_date_end(self, date_end):
         """ d """
@@ -94,9 +128,9 @@ class AggregateReport():
                 date_end = int(date_end)
             except ValueError:
                 date_end = 0
-        if datetime.fromtimestamp(date_end) > datetime.now():
+        if date_end == 0 or datetime.fromtimestamp(date_end) > datetime.now():
             raise InvalidTime("Date end is in the future")
-        self.dict["date_end"] = date_end
+        self.metadata.date_end = date_end
 
     def set_policy_domain(self, domain):
         """ d """
@@ -122,6 +156,13 @@ class AggregateReport():
         """ d """
         self.policy.policy_pct = _sanitize_input(policy_pct)
 
+    def add_record(self, record):
+        """ d """
+        if isinstance(record, Record):
+            self.records.append(record)
+        else:
+            raise ValueError
+
     def get_dict(self):
         """ d """
         return self.dict
@@ -129,12 +170,46 @@ class AggregateReport():
     def __str__(self):
         return f"<{self.metadata.org_name}, {self.metadata.email}>"
 
+@dataclass
+# pylint: disable-next=too-many-instance-attributes
+class ForensicReportData:
+    """ d """
+    feedback_type: str = None
+    user_agent: str = None
+    version: int = None
+    original_mail_from: str = None
+    arrival_date: datetime = None
+    source_ipv4: IPv4Address = None
+    source_ipv6: IPv6Address = None
+    reported_domain: str = None
+    original_envelope_id: str = None
+    authentication_results: str = None
+    dkim_domain: str = None
+    delivery_result: str = None
+    identity_alignment: str = None
+
 class ForensicReport():
     """
     s
     """
     def __init__(self):
         self.dict = {}
+
+        self.report_data = None  # ForensicReportData()
+        self.sample_data = None  # EmailMessage()
+
+    def add_report_data(self, data: ForensicReportData):
+        """ s """
+        self.report_data = data
+
+    def add_sample_data(self, data: bytes):
+        """ s """
+        try:
+            data = data.encode("utf-8") if not isinstance(data, bytes) else data
+        except (UnicodeDecodeError, AttributeError) as _error:
+            raise InvalidForensicSample("Forensic sample could not be encoded") from _error
+
+        self.sample_data = message_from_bytes(data, _class=EmailMessage)
 
     def get_dict(self):
         """ d """
@@ -214,41 +289,129 @@ def aggregate_report_from_xml(xml: str) -> AggregateReport:
     # Parse <records>
     for record in root.findall("./record"):
         # Row
-        source_ip = record.find("row/source_ip")
-        count = record.find("row/count")
+        ## Source ip
+        record_source_ip = record.find("row/source_ip")
+        # pylint: disable-next=line-too-long
+        record_source_ip = "" if record_source_ip is None or record_source_ip.text is None else record_source_ip.text
+        try:
+            ip_addr = ip_address(record_source_ip)
+        except ValueError:
+            continue
+        ipv4_addr = None
+        ipv6_addr = None
+        if isinstance(ip_addr, IPv4Address):
+            ipv4_addr = ip_addr
+        elif isinstance(ip_addr, IPv6Address):
+            ipv6_addr = ip_addr
+        ## Record cound
+        record_count = record.find("row/count")
+        record_count = 0 if record_count is None or record_count.text is None else record_count.text
 
         # Row / Policy Evaluated
-        disposition = record.find("row/policy_evaluated/disposition")
-        dkim = record.find("row/policy_evaluated/dkim")
-        spf = record.find("row/policy_evaluated/spf")
+        ## Disposition
+        record_eval_disposition = record.find("row/policy_evaluated/disposition")
+        # pylint: disable-next=line-too-long
+        record_eval_disposition = "" if record_eval_disposition is None or record_eval_disposition.text is None else record_eval_disposition.text
+        ## Evaluated DKIM
+        record_eval_dkim = record.find("row/policy_evaluated/dkim")
+        # pylint: disable-next=line-too-long
+        record_eval_dkim = "" if record_eval_dkim is None or record_eval_dkim.text is None else record_eval_dkim.text
+        ## Evaluated SPF
+        record_eval_spf = record.find("row/policy_evaluated/spf")
+        # pylint: disable-next=line-too-long
+        record_eval_spf = "" if record_eval_spf is None or record_eval_spf is None else record_eval_spf.text
 
         # Identifiers
-        header_from = record.find("identifiers/header_from")
+        ## Header-from
+        record_header_from = record.find("identifiers/header_from")
+        # pylint: disable-next=line-too-long
+        record_header_from = "" if record_header_from is None or record_header_from is None else record_header_from.text
 
         # Auth Results
-        domain = record.find("auth_results/spf/result")
-        result = record.find("auth_results/spf/domain")
+        ## SPF Domain
+        record_spf_domain = record.find("auth_results/spf/domain")
+        # pylint: disable-next=line-too-long
+        record_spf_domain = "" if record_spf_domain is None or record_spf_domain.text is None else record_spf_domain.text
+        ## SPF Result
+        record_spf_result = record.find("auth_results/spf/result")
+        # pylint: disable-next=line-too-long
+        record_spf_result = "" if record_spf_result is None or record_spf_result.text is None else record_spf_result.text
 
-        print(source_ip.text)
-        print(count.text)
-        print(header_from.text)
-        print(disposition.text)
-        print(dkim.text)
-        print(spf.text)
-        print(domain.text)
-        print(result.text)
+        aggregate_report.add_record(
+            Record(
+                ipv4_addr,
+                ipv6_addr,
+                record_count,
+                record_eval_disposition,
+                record_eval_dkim,
+                record_eval_spf,
+                record_header_from,
+                record_spf_domain,
+                record_spf_result,
+            )
+        )
 
     return aggregate_report
 
-def forensic_report_from_xml(report: str, sample: str) -> ForensicReport:
+# pylint: disable-next=too-many-locals, too-many-branches
+def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
     """ d """
     forensic_report = ForensicReport()
+    forensic_report_data = ForensicReportData()
 
     raw_report = report
     for line in raw_report.splitlines():
-        print(line)
-    raw_sample = sample
-    for line in raw_sample.splitlines():
-        print(line)
+        key, value = line.split(":", 1)
+        key = key.lower().strip()
+        value = value.strip()
+
+        if key == "feedback-type":
+            forensic_report_data.feedback_type = value
+        elif key == "user-agent":
+            forensic_report_data.user_agent = value
+        elif key == "version":
+            forensic_report_data.version = value
+        elif key == "original-mail-from":
+            forensic_report_data.original_mail_from = value
+        elif key == "arrival-date":
+            try:
+                time = datetime.strptime(value, "%a, %d %b %Y %H:%M:%S %z")
+            except ValueError as _error:
+                raise InvalidTime from _error
+
+            forensic_report_data.arrival_date = time
+        elif key == "source-ip":
+            try:
+                ip_addr = ip_address(value)
+            except ValueError as _error:
+                raise ValueError from _error
+
+            if isinstance(ip_addr, IPv4Address):
+                forensic_report_data.source_ipv4 = ip_addr
+            elif isinstance(ip_addr, IPv6Address):
+                forensic_report_data.source_ipv6 = ip_addr
+        elif key == "reported-domain":
+            forensic_report_data.reported_domain = value
+        elif key == "original-envelope-id":
+            forensic_report_data.original_envelope_id = value
+        elif key == "authentication-results":
+            forensic_report_data.authentication_results = value
+        elif key == "dkim-domain":
+            forensic_report_data.dkim_domain = value
+        elif key == "delivery-result":
+            forensic_report_data.delivery_result = value
+        elif key == "identity-alignment":
+            forensic_report_data.identity_alignment = value
+        else:
+            raise UnknownKey(f"The report contains an unknown key ({key})")
+
+    forensic_report.report_data = forensic_report_data
+
+    # Sample
+    try:
+        sample = sample.encode("utf-8") if not isinstance(sample, bytes) else sample
+    except (UnicodeDecodeError, AttributeError) as _error:
+        raise InvalidForensicSample("Forensic sample could not be encoded") from _error
+    forensic_report.add_sample_data(sample)
 
     return forensic_report

@@ -3,9 +3,9 @@
 
 """ This is a DMARC parser library """
 
-import logging
-
 import io
+import logging
+from multiprocessing import Queue
 
 from email import message_from_bytes
 from email.message import EmailMessage
@@ -20,7 +20,7 @@ import xml.etree.ElementTree as elementTree
 from .logger import _custom_logger, _unique_logger_id
 from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE
 
-from .report import aggregate_report_from_xml, forensic_report_from_xml
+from .report import aggregate_report_from_xml, forensic_report_from_string
 from .report import AggregateReport, ForensicReport
 from .report import InvalidOrgName, InvalidTime
 
@@ -44,27 +44,39 @@ class DmarcParser():
     GZIP_SIGNATURE = b"\x1F\x8B"
     XML_SIGNATURE = b"\x3C\x3F\x78\x6D\x6C\x20"
 
-    def __init__(self, debug_level=logging.INFO):
-        self.logger_id = _unique_logger_id()
-        self.logger = _custom_logger(self.logger_id, debug_level, SYSLOG_TO_SCREEN | SYSLOG_TO_FILE)
+    # pylint: disable-next=line-too-long
+    def __init__(self, queue: Queue = None, queue_name: str = _unique_logger_id(), debug_level=logging.INFO):
+        self.logger = _custom_logger(
+            name=queue_name,
+            queue=queue,
+            debug_level=debug_level,
+            handler=SYSLOG_TO_SCREEN | SYSLOG_TO_FILE,
+        )
 
-    def read_file(self, file: str):
-        """ e """
-        if not file.exists() or not file.is_file():
-            self.logger.debug("File %s could not be accessed", file)
-            return
-        self.logger.debug("Found file %s", file)
+    def read_file(self, path: str) -> dict:
+        """
+        Takes a path argument and returns a dictionary of parsed data.
+        
+        Input: str
+        
+        Output: dict or None
+
+        """
+        if not path.exists() or not path.is_file():
+            self.logger.debug("File %s could not be accessed", path)
+            return None
+        self.logger.debug("Found file %s", path)
         try:
-            open_file = file.open("rb")
+            open_file = path.open("rb")
         except FileNotFoundError:
-            self.logger.debug("Could not find file %s", file)
+            self.logger.debug("Could not find file %s", path)
         else:
             with open_file:
                 data = open_file.read()
 
         report = self._get_file_data(data)
         if not report:
-            return
+            return None
 
         #self.logger.debug("Report-Data: %s", xml)
 
@@ -80,7 +92,7 @@ class DmarcParser():
         if output:
             self.logger.debug(output)
 
-        return
+        return {}
 
     def extract_report_from_zip(self, data: io.BytesIO) -> dict:
         """
@@ -180,15 +192,15 @@ class DmarcParser():
 
         return {"aggregate": {"report": xml}}
 
+    # pylint: disable-next=too-many-branches
     def extract_report_from_eml(self, data: bytes) -> dict:
-        # pylint: disable=too-many-branches
         """
         Tries to parse the raw text as EML.
         Extracts the attachments and then tries to extract the xml-data.
 
         Input: bytes
 
-        Output: tuple. report_type, dict (xml)
+        Output: dict {"aggregate": {"report": ...}, "forensic": {"report": ..., "sample": ...}}
 
         """
         output = {}
@@ -209,8 +221,6 @@ class DmarcParser():
                 # Since we iter through attachments, we could get away with assuming [0].
                 # Might regret this.
                 payload = payload[0].get_payload()
-            else:
-                payload = payload.get_payload()
 
             file_encoding = attachment.get("content-transfer-encoding")
 
@@ -294,7 +304,7 @@ class DmarcParser():
         if "forensic" not in report and "report" in report["forensic"]:
             return None
 
-        return forensic_report_from_xml(report["forensic"]["report"], report["forensic"]["sample"])
+        return forensic_report_from_string(report["forensic"]["report"], report["forensic"]["sample"])
 
     def _get_file_data(self, data: bytes) -> dict:
         """ Guesses the signature and then extract xml-data """

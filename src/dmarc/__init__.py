@@ -7,24 +7,22 @@ import logging
 import os
 
 from pathlib import Path
-from threading import Thread
+from multiprocessing import Queue
+from multiprocessing import Process
 
 from .parser import DmarcParser
+from .logger import logging_process
 
-class _ParseFile(Thread):
+def _parse_file(path: str, queue_name: str, queue: Queue, debug_level: int = logging.INFO):
     """
-    A threaded class for the DmarcParser.
+    A method to support multiprocessing.
     Part of the support library and should not be used directly.
     """
-    def __init__(self, file, debug_level=logging.INFO):
-        Thread.__init__(self)
-        self.parser = DmarcParser(debug_level)
-        self.file = file
-    def run(self):
-        self.parser.read_file(self.file)
 
+    parser = DmarcParser(queue, queue_name, debug_level)
+    parser.read_file(path)
 
-def dmarc_from_folder(folder, recursive=False, debug_level=logging.INFO):
+def dmarc_from_folder(folder: str, recursive: bool = False, debug_level: int = logging.INFO):
     """ Parse a folder """
     if not os.path.exists(folder):
         return
@@ -38,9 +36,18 @@ def dmarc_from_folder(folder, recursive=False, debug_level=logging.INFO):
     else:
         files_found = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
 
+    queue = Queue()
+    queue_name = "app"
+    logger_p = Process(target=logging_process, args=(queue_name, queue, debug_level,))
+    logger_p.start()
+
     threads = []
-    for file in files_found:
-        threads.append(_ParseFile(file, debug_level))
+    counter = 0
+    for path in files_found:
+        threads.append(Process(target=_parse_file, args=(path, queue_name, queue, debug_level,)))
+        counter += 1
+        if counter > 1:
+            break
 
     for thread in threads:
         thread.start()
@@ -48,13 +55,16 @@ def dmarc_from_folder(folder, recursive=False, debug_level=logging.INFO):
     for thread in threads:
         thread.join()
 
-def dmarc_from_file(file, debug_level=logging.INFO):
+    queue.put(None)
+    logger_p.join()
+
+def dmarc_from_file(path: str, debug_level: int = logging.INFO):
     """ Parse a file """
-    if not os.path.exists(file):
+    if not os.path.exists(path):
         return None
-    if not os.path.isfile(file):
+    if not os.path.isfile(path):
         return None
     parser = DmarcParser(debug_level)
-    parser.read_file(Path(file))
+    parser.read_file(Path(path))
 
     return None # Returns None for now. Should be dict from parser
