@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """ This is a DMARC report library """
+
 import io
 import xml.etree.ElementTree as elementTree
 
 from datetime import datetime
+from dataclasses import dataclass
 
 from .misc import _sanitize_input
 
@@ -19,6 +21,25 @@ class InvalidOrgName(Exception):
     def __init__(self, msg):
         super().__init__(msg)
 
+@dataclass
+class Metadata:
+    """ d """
+    org_name: str = None
+    email: str = None
+    report_id: str = None
+    date_begin: datetime = None
+    date_end: datetime = None
+
+@dataclass
+class PolicyPublished:
+    """ d """
+    policy_domain: str = None
+    policy_adkim: str = None
+    policy_aspf: str = None
+    policy_p: str = None
+    policy_sp: str = None
+    policy_pct: int = None
+
 class AggregateReport():
     """
     An aggregated report class to organize and validate data from xml.
@@ -27,19 +48,10 @@ class AggregateReport():
         self.dict = {}
 
         # Report metadata
-        self.org_name = None
-        self.email = None
-        self.repord_id = None
-        self.date_begin = None
-        self.date_end = None
+        self.metadata = Metadata()
 
         # Policy published
-        self.policy_domain = None
-        self.policy_adkim = None
-        self.policy_aspf = None
-        self.policy_p = None
-        self.policy_sp = None
-        self.policy_pct = None
+        self.policy = PolicyPublished()
 
         # Records
         self.records = []
@@ -51,14 +63,14 @@ class AggregateReport():
     def set_org_name(self, org_name):
         """ d """
         self.dict["org_name"] = _sanitize_input(org_name)
-        self.org_name = _sanitize_input(org_name)
-        if not self.org_name:
+        self.metadata.org_name = _sanitize_input(org_name)
+        if not self.metadata.org_name:
             raise InvalidOrgName("Organization name cannot be empty")
 
     def set_email(self, email):
         """ d """
         self.dict["email"] = _sanitize_input(email)
-        self.email = _sanitize_input(email)
+        self.metadata.email = _sanitize_input(email)
 
     def set_report_id(self, report_id):
         """ d """
@@ -88,34 +100,34 @@ class AggregateReport():
 
     def set_policy_domain(self, domain):
         """ d """
-        self.policy_domain = _sanitize_input(domain)
+        self.policy.policy_domain = _sanitize_input(domain)
 
     def set_policy_adkim(self, adkim):
         """ d """
-        self.policy_adkim = _sanitize_input(adkim)
+        self.policy.policy_adkim = _sanitize_input(adkim)
 
     def set_policy_aspf(self, policy_aspf):
         """ d """
-        self.policy_aspf = _sanitize_input(policy_aspf)
+        self.policy.policy_aspf = _sanitize_input(policy_aspf)
 
     def set_policy_p(self, policy_p):
         """ d """
-        self.policy_p = _sanitize_input(policy_p)
+        self.policy.policy_p = _sanitize_input(policy_p)
 
     def set_policy_sp(self, policy_sp):
         """ d """
-        self.policy_sp = _sanitize_input(policy_sp)
+        self.policy.policy_sp = _sanitize_input(policy_sp)
 
     def set_policy_pct(self, policy_pct):
         """ d """
-        self.policy_pct = _sanitize_input(policy_pct)
+        self.policy.policy_pct = _sanitize_input(policy_pct)
 
     def get_dict(self):
         """ d """
         return self.dict
 
     def __str__(self):
-        return f"<{self.org_name}, {self.email}>"
+        return f"<{self.metadata.org_name}, {self.metadata.email}>"
 
 class ForensicReport():
     """
@@ -132,8 +144,8 @@ class ForensicReport():
         """ d """
         return "hej"
 
+# pylint: disable-next=too-many-locals, too-many-statements
 def aggregate_report_from_xml(xml: str) -> AggregateReport:
-    # pylint: disable=too-many-locals
     """ d """
     aggregate_report = AggregateReport()
 

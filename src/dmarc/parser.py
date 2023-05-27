@@ -181,6 +181,7 @@ class DmarcParser():
         return {"aggregate": {"report": xml}}
 
     def extract_report_from_eml(self, data: bytes) -> dict:
+        # pylint: disable=too-many-branches
         """
         Tries to parse the raw text as EML.
         Extracts the attachments and then tries to extract the xml-data.
