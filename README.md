@@ -1,7 +1,7 @@
 [![Package](https://github.com/andersnauman/dmarc-parser/actions/workflows/python-package.yml/badge.svg)](https://github.com/andersnauman/dmarc-parser/actions/workflows/python-package.yml) [![Pylint](https://github.com/andersnauman/dmarc-parser/actions/workflows/pylint.yml/badge.svg)](https://github.com/andersnauman/dmarc-parser/actions/workflows/pylint.yml)
 ## DMARC Parser
 ### Public helper methods
-These methods are only included for your convenience. Code is "not" part of the main library/parser but act as a great segway to implement the parser with ease.
+These methods are only included for your convenience. Code is "not" part of the main library/parser but acts as a great segway to implement the parser with ease.
 ```
     from dmarc import dmarc_from_folder, dmarc_from_file
 
