@@ -64,7 +64,7 @@ def dmarc_from_file(path: str, debug_level: int = logging.INFO):
         return None
     if not os.path.isfile(path):
         return None
-    parser = DmarcParser(debug_level)
+    parser = DmarcParser(debug_level=debug_level)
     parser.read_file(Path(path))
 
     return None # Returns None for now. Should be dict from parser
