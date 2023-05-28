@@ -22,7 +22,7 @@ from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE
 
 from .report import aggregate_report_from_xml, forensic_report_from_string
 from .report import AggregateReport, ForensicReport
-from .report import InvalidOrgName, InvalidTime
+from .report import InvalidOrgName, InvalidTime, InvalidForensicSample, UnknownKey
 
 class DmarcParser():
     """
@@ -52,8 +52,9 @@ class DmarcParser():
             debug_level=debug_level,
             handler=SYSLOG_TO_SCREEN | SYSLOG_TO_FILE,
         )
+        self.reports = []
 
-    def read_file(self, path: str) -> dict:
+    def read_file(self, path: str):
         """
         Takes a path argument and returns a dictionary of parsed data.
         
@@ -64,30 +65,40 @@ class DmarcParser():
         """
         if not path.exists() or not path.is_file():
             self.logger.debug("File %s could not be accessed", path)
-            return None
+            return
         self.logger.debug("Reading %s", path)
         try:
             open_file = path.open("rb")
         except FileNotFoundError:
             self.logger.debug("Could not find file %s", path)
-        else:
-            with open_file:
-                data = open_file.read()
+            return
 
-        report = self._get_file_data(data)
-        if not report:
-            return None
+        with open_file:
+            data = open_file.read()
 
-        output = None
-        if "aggregate" in report:
-            try:
-                output = self.parse_aggregate_report(report)
-            except (InvalidOrgName, InvalidTime) as _error:
-                self.logger.debug("ERROR: %s", _error)
-        elif "forensic" in report:
-            output = self.parse_forensic_report(report)
+        raw_reports = self._get_file_data(data)
+        if not raw_reports:
+            return
 
-        return output.get_dict()
+        for raw_report in raw_reports:
+            if "aggregate" in raw_report:
+                try:
+                    self.reports.append({
+                        "type": "aggregate",
+                        "report": self.parse_aggregate_report(raw_report),
+                    })
+                except (InvalidOrgName, InvalidTime) as _error:
+                    self.logger.debug("ERROR: %s", _error)
+                    continue
+            elif "forensic" in raw_report:
+                try:
+                    self.reports.append({
+                        "type": "forensic",
+                        "report": self.parse_forensic_report(raw_report),
+                    })
+                except (InvalidForensicSample, UnknownKey) as _error:
+                    self.logger.debug("ERROR: %s", _error)
+                    continue
 
     def extract_report_from_zip(self, data: io.BytesIO) -> dict:
         """
@@ -300,16 +311,17 @@ class DmarcParser():
         )
 
     def _get_file_data(self, data: bytes) -> dict:
-        """ Guesses the signature and then extract xml-data """
+        """ Guesses the signature and then extract the unparsed / raw reports """
+        reports = None
         if data.startswith(self.ZIP_SIGNATURE):
-            xml = self.extract_report_from_zip(io.BytesIO(data))
+            reports = self.extract_report_from_zip(io.BytesIO(data))
         elif data.startswith(self.GZIP_SIGNATURE):
-            xml = self.extract_report_from_gzip(io.BytesIO(data))
+            reports = self.extract_report_from_gzip(io.BytesIO(data))
         elif data.lstrip().startswith(self.XML_SIGNATURE):
-            xml = self.extract_report_from_xml(data)
+            reports = self.extract_report_from_xml(data)
         else:
-            xml = self.extract_report_from_eml(data)
-        return xml
+            reports = self.extract_report_from_eml(data)
+        return reports
 
     def _normalize_xml(self, xml: str) -> str:
         """ Normalize the xml. Remove newlines and strip white spaces """
