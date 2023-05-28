@@ -11,19 +11,39 @@ from multiprocessing import Queue
 from multiprocessing import Process
 
 from .parser import DmarcParser
-from .logger import logging_process
+from .logger import _custom_logger, _queue_logging
+from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE, SYSLOG_TO_SYSLOG
 
-def _parse_file(path: str, queue_name: str, queue: Queue, debug_level: int = logging.INFO):
+class InvalidPath(Exception):
+    """ Exception raised when path is not valid """
+    def __init__(self, msg):
+        super().__init__(msg)
+
+class InvalidFile(Exception):
+    """ Exception raised when file is not valid """
+    def __init__(self, msg):
+        super().__init__(msg)
+
+# pylint: disable-next=line-too-long
+def _parse_file(path: str = None, logger_name: str = None, queue: Queue = None, log_level: int = logging.INFO):
     """
     A method to support multiprocessing.
     Part of the support library and should not be used directly.
     """
-
-    parser = DmarcParser(queue_name, queue, debug_level)
+    _logger = _custom_logger(
+        logger_name=logger_name,
+        queue=queue,
+        log_level=log_level,
+    )
+    parser = DmarcParser(_logger)
     parser.read_file(path)
 
-def dmarc_from_folder(folder: str, recursive: bool = False, debug_level: int = logging.INFO):
-    """ Parse a folder """
+def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = logging.INFO):
+    """
+    Parsing a folder, recursivly if needed, through multiprocessing.
+    This method is provided for you convenience, although, writing your own is always recommended.
+    Especially if you want a different logging handler than default (stdout + syslog).
+    """
     if not os.path.exists(folder):
         return
     if not os.path.isdir(folder):
@@ -37,14 +57,14 @@ def dmarc_from_folder(folder: str, recursive: bool = False, debug_level: int = l
         files_found = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
 
     queue = Queue()
-    queue_name = "app"
-    logger_p = Process(target=logging_process, args=(queue_name, queue, debug_level,))
+    logger_name = "app"
+    logger_p = Process(target=_queue_logging, args=(logger_name, queue, log_level))
     logger_p.start()
 
     threads = []
     counter = 0
     for path in files_found:
-        threads.append(Process(target=_parse_file, args=(path, queue_name, queue, debug_level,)))
+        threads.append(Process(target=_parse_file, args=(path, logger_name, queue, log_level)))
         counter += 1
         if counter > 1:
             break
@@ -55,16 +75,16 @@ def dmarc_from_folder(folder: str, recursive: bool = False, debug_level: int = l
     for thread in threads:
         thread.join()
 
+    # Write 'None' do exit the loop inside _queue_logging().
     queue.put(None)
     logger_p.join()
 
-def dmarc_from_file(path: str, debug_level: int = logging.INFO):
+def dmarc_from_file(path: str, log_level: int = logging.INFO):
     """ Parse a file """
     if not os.path.exists(path):
-        return None
+        raise InvalidPath
     if not os.path.isfile(path):
-        return None
-    parser = DmarcParser(debug_level=debug_level)
-    parser.read_file(Path(path))
+        raise InvalidFile
 
-    return None # Returns None for now. Should be dict from parser
+    parser = DmarcParser(log_level=log_level)
+    parser.read_file(Path(path))

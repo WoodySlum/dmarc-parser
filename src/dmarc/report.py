@@ -220,8 +220,12 @@ class ForensicReport():
         return "hej"
 
 # pylint: disable-next=too-many-locals, too-many-statements
-def aggregate_report_from_xml(xml: str) -> AggregateReport:
+def aggregate_report_from_xml(xml: bytes) -> AggregateReport:
     """ d """
+
+    if not isinstance(xml, bytes):
+        raise ValueError("Input variable is not bytes")
+
     aggregate_report = AggregateReport()
 
     tree = elementTree.parse(io.BytesIO(xml))

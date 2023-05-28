@@ -5,7 +5,6 @@
 
 import io
 import logging
-from multiprocessing import Queue
 
 from email import message_from_bytes
 from email.message import EmailMessage
@@ -17,7 +16,7 @@ from gzip import GzipFile, BadGzipFile
 
 import xml.etree.ElementTree as elementTree
 
-from .logger import _custom_logger, _unique_logger_id
+from .logger import _custom_logger
 from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE
 
 from .report import aggregate_report_from_xml, forensic_report_from_string
@@ -45,13 +44,14 @@ class DmarcParser():
     XML_SIGNATURE = b"\x3C\x3F\x78\x6D\x6C\x20"
 
     # pylint: disable-next=line-too-long
-    def __init__(self, queue_name: str = _unique_logger_id(), queue: Queue = None, debug_level: int = logging.INFO):
-        self.logger = _custom_logger(
-            name=queue_name,
-            queue=queue,
-            debug_level=debug_level,
-            handler=SYSLOG_TO_SCREEN | SYSLOG_TO_FILE,
-        )
+    def __init__(self, logger: logging.Logger = None, log_level: int = logging.INFO):
+        if logger is not None:
+            self.logger = logger
+        else:
+            self.logger = _custom_logger(
+                log_level=log_level,
+                handler=SYSLOG_TO_SCREEN | SYSLOG_TO_FILE,
+            )
         self.reports = []
 
     def read_file(self, path: str):
@@ -60,13 +60,14 @@ class DmarcParser():
         
         Input: str
         
-        Output: dict or None
+        Output: 
 
         """
+        self.logger.debug("Reading %s", path)
+
         if not path.exists() or not path.is_file():
             self.logger.debug("File %s could not be accessed", path)
             return
-        self.logger.debug("Reading %s", path)
         try:
             open_file = path.open("rb")
         except FileNotFoundError:
@@ -77,11 +78,12 @@ class DmarcParser():
             data = open_file.read()
 
         raw_reports = self._get_file_data(data)
+        #print(raw_reports)
         if not raw_reports:
             return
 
-        for raw_report in raw_reports:
-            if "aggregate" in raw_report:
+        for report_type, raw_report in raw_reports.items():
+            if "aggregate" in report_type:
                 try:
                     self.reports.append({
                         "type": "aggregate",
@@ -90,7 +92,7 @@ class DmarcParser():
                 except (InvalidOrgName, InvalidTime) as _error:
                     self.logger.debug("ERROR: %s", _error)
                     continue
-            elif "forensic" in raw_report:
+            elif "forensic" in report_type:
                 try:
                     self.reports.append({
                         "type": "forensic",
@@ -106,7 +108,7 @@ class DmarcParser():
         
         Input: io.BytesIO
         
-        Output: string (xml-data) or None
+        Output: dict {"aggregate": {"report": ...}} or None
         
         """
         xml = None
@@ -142,7 +144,7 @@ class DmarcParser():
         
         Input: io.BytesIO
         
-        Output: string (xml-data) or None
+        Output: dict {"aggregate": {"report": ...}} or None
         
         """
         xml = None
@@ -174,7 +176,7 @@ class DmarcParser():
         
         Input: bytes
         
-        Output: string (xml-data) or None
+        Output: dict {"aggregate": {"report": ...}} or None
         
         """
         xml = None
@@ -271,25 +273,19 @@ class DmarcParser():
         """
         Parse the aggregate report.
         
-        Input: dict {"aggregate": {"report": ...}}
+        Input: dict {"report": ...}
         
         Output: AggregateReport object        
         """
 
-        if "aggregate" not in report and "report" in report["aggregate"]:
+        if "report" not in report:
             return None
 
-        xml = report["aggregate"]["report"]
-
-        if isinstance(xml, str):
-            try:
-                xml = xml.encode("utf-8")
-            except UnicodeDecodeError:
-                self.logger.debug("Extract XML: Could not decode file")
-                return None
-
-        if not xml:
-            return None
+        xml = report["report"]
+        try:
+            xml = xml.encode("utf-8") if not isinstance(xml, bytes) else xml
+        except (UnicodeDecodeError, AttributeError):
+            self.logger.debug("Could not decode xml")
 
         return aggregate_report_from_xml(xml)
 
@@ -297,12 +293,12 @@ class DmarcParser():
         """
         Parse the forensic report and sample
         
-        Input: dict {"forensic": {"report": ..., "sample": ...}}
+        Input: dict {"report": ..., "sample": ...}
         
         Output: ForensicReport object        
         """
 
-        if "forensic" not in report and "report" in report["forensic"]:
+        if "report" in report and "sample" in report:
             return None
 
         return forensic_report_from_string(

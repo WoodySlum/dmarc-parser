@@ -7,11 +7,14 @@ import sys
 import logging
 import itertools
 
+from sys import platform
+
 from multiprocessing import Queue
-from logging.handlers import QueueHandler
+from logging.handlers import QueueHandler, SysLogHandler
 
 SYSLOG_TO_FILE = 1 << 0
 SYSLOG_TO_SCREEN = 1 << 1
+SYSLOG_TO_SYSLOG = 1 << 2
 
 unique_id = itertools.count()
 
@@ -19,15 +22,20 @@ def _unique_logger_id():
     return "dmarcparser-" + str(next(unique_id))
 
 # pylint: disable-next=line-too-long
-def _custom_logger(name=_unique_logger_id(), queue: Queue = None, debug_level=logging.INFO, handler=SYSLOG_TO_SCREEN):
+def _custom_logger(logger_name=_unique_logger_id(), queue: Queue = None, log_level:int = logging.INFO, handler:int = SYSLOG_TO_SCREEN):
     """
+    Part of the support library and should not be used directly.
+    Used if no logger is provided to main functions.
+    The recommendation is to always include your own.
+
     Create a custom logger instead of modifing the core logger
     https://stackoverflow.com/questions/28330317/print-timestamp-for-logging-in-python
     """
+
     formatter = logging.Formatter(fmt='%(asctime)s %(thread)s %(levelname)-8s %(message)s',
                                   datefmt='%Y-%m-%d %H:%M:%S')
-    logger = logging.getLogger(name)
-    logger.setLevel(debug_level)
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(log_level)
 
     if queue is not None:
         logger.addHandler(QueueHandler(queue))
@@ -43,14 +51,24 @@ def _custom_logger(name=_unique_logger_id(), queue: Queue = None, debug_level=lo
         screen_handler.setFormatter(formatter)
         logger.addHandler(screen_handler)
 
+    if handler & SYSLOG_TO_SYSLOG:
+        if platform.startswith('linux'):
+            syslog_handler = SysLogHandler(facility=SysLogHandler.LOG_DAEMON, address='/dev/log')
+            logger.addHandler(syslog_handler)
+        else:
+            logger.debug("SYSLOG_TO_SYSLOG is only supported for Linux")
+
     return logger
 
-def logging_process(name, queue: Queue, debug_level=logging.INFO):
-    """ s """
+def _queue_logging(logger_name: str = None, queue: Queue = None, log_level=logging.INFO):
+    """
+    A method to support multiprocessing.
+    Part of the support library and should not be used directly.
+    """
     logger = _custom_logger(
-        name=name,
-        debug_level=debug_level,
-        handler=SYSLOG_TO_SCREEN | SYSLOG_TO_FILE,
+        logger_name=logger_name,
+        log_level=log_level,
+        handler=SYSLOG_TO_SCREEN | SYSLOG_TO_FILE | SYSLOG_TO_SYSLOG,
     )
 
     while True:
