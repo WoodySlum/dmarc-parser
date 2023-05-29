@@ -7,9 +7,10 @@ import io
 import xml.etree.ElementTree as elementTree
 
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from email import message_from_bytes
 from email.message import EmailMessage
+
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from .misc import _sanitize_input
@@ -31,6 +32,11 @@ class InvalidForensicSample(Exception):
 
 class UnknownKey(Exception):
     """ Exception raised for unknown keys in the key/value pairs """
+    def __init__(self, msg):
+        super().__init__(msg)
+
+class InvalidFormat(Exception):
+    """ Exception raised when data do not follow RFC """
     def __init__(self, msg):
         super().__init__(msg)
 
@@ -170,23 +176,32 @@ class AggregateReport():
     def __str__(self):
         return f"<{self.metadata.org_name}, {self.metadata.email}>"
 
+# https://www.rfc-editor.org/rfc/rfc6591.txt
+# AFRF
 @dataclass
 # pylint: disable-next=too-many-instance-attributes
 class ForensicReportData:
     """ d """
-    feedback_type: str = None
-    user_agent: str = None
-    version: int = None
-    original_mail_from: str = None
     arrival_date: datetime = None
-    source_ipv4: IPv4Address = None
-    source_ipv6: IPv6Address = None
-    reported_domain: str = None
-    original_envelope_id: str = None
+    auth_failure: str = None
     authentication_results: str = None
     dkim_domain: str = None
+    dkim_identity: str = None
+    dkim_selector: str = None
     delivery_result: str = None
+    feedback_type: str = None
     identity_alignment: str = None
+    incidents: int = None
+    original_envelope_id: str = None
+    original_mail_from: str = None
+    original_rcpt_to: str = None
+    reported_domain: str = None
+    reported_uri: str = None
+    reporting_mta: str = None
+    source_ipv4: IPv4Address = None
+    source_ipv6: IPv6Address = None
+    user_agent: str = None
+    version: int = None
 
 class ForensicReport():
     """
@@ -213,7 +228,7 @@ class ForensicReport():
 
     def get_dict(self):
         """ d """
-        return self.dict
+        return asdict(self.report_data)
 
     def __repr__(self):
         """ d """
@@ -363,54 +378,98 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
     forensic_report = ForensicReport()
     forensic_report_data = ForensicReportData()
 
+    msg = message_from_bytes(report.encode("utf-8"), _class=EmailMessage)
+    print("Feedback-Type: {}".format(msg.get("feedback-type")))
+    # TODO: Convert match-case with msg.get("header")
+    return
+
     raw_report = report
     for line in raw_report.splitlines():
         key, value = line.split(":", 1)
         key = key.lower().strip()
         value = value.strip()
+        match key:
+            case "feedback-type": # required, once, auth-failure/abuse
+                if forensic_report_data.feedback_type is not None:
+                    raise InvalidFormat("")
+                forensic_report_data.feedback_type = value
+            case "user-agent": # required, once
+                if forensic_report_data.user_agent is not None:
+                    raise InvalidFormat("")
+                forensic_report_data.user_agent = value
+            case "version": # required, once
+                if forensic_report_data.version is not None:
+                    raise InvalidFormat("")
+                if not isinstance(value, int):
+                    try:
+                        value = int(value)
+                    except ValueError as _error:
+                        raise InvalidFormat("") from _error
+                forensic_report_data.version = value
+            case "original-mail-from": # optional, once
+                if forensic_report_data.original_mail_from is not None:
+                    raise InvalidFormat("")
+                forensic_report_data.original_mail_from = value
+            case "arrival-date" | "received-date": # optional, once
+                if forensic_report_data.arrival_date is not None:
+                    raise InvalidFormat("")
+                try:
+                    time = datetime.strptime(value, "%a, %d %b %Y %H:%M:%S %z")
+                except ValueError as _error:
+                    raise InvalidTime from _error
+                forensic_report_data.arrival_date = time
+            case "source-ip": # optional, once
+                if forensic_report_data.source_ipv4 is not None or \
+                    forensic_report_data.source_ipv6 is not None:
+                    raise InvalidFormat("")
+                try:
+                    ip_addr = ip_address(value)
+                except ValueError as _error:
+                    raise ValueError from _error
+                if isinstance(ip_addr, IPv4Address):
+                    forensic_report_data.source_ipv4 = ip_addr
+                elif isinstance(ip_addr, IPv6Address):
+                    forensic_report_data.source_ipv6 = ip_addr
+            case "reported-domain": # required
+                forensic_report_data.reported_domain = value
+            case "original-envelope-id": # optional
+                forensic_report_data.original_envelope_id = value
+            case "authentication-results": # required, once
+                if forensic_report_data.authentication_results is not None:
+                    raise InvalidFormat("")
+                forensic_report_data.authentication_results = value
+            case "dkim-domain":
+                forensic_report_data.dkim_domain = value
+            case "dkim-identity":
+                forensic_report_data.dkim_identity = value
+            case "dkim-selector":
+                forensic_report_data.dkim_selector = value
+            case "delivery-result": # optional, delivered/spam/policy/reject/other
+                forensic_report_data.delivery_result = value
+            case "identity-alignment":
+                forensic_report_data.identity_alignment = value
+            case "auth-failure": # required, adsp/bodyhash/revoked/signature/spf
+                forensic_report_data.auth_failure = value
+            case "reporting-mta": # optional, once
+                if forensic_report_data.reporting_mta is not None:
+                    raise InvalidFormat("")
+                forensic_report_data.reporting_mta = value
+            case "incidents": # optional, once
+                if forensic_report_data.incidents is not None:
+                    raise InvalidFormat("")
+                forensic_report_data.incidents = value
+            case "original-rcpt-to": # optional
+                forensic_report_data.original_rcpt_to = value
+            case "reported-uri": # optional
+                forensic_report_data.reported_uri = value
+            case _:
+                continue
+                #raise UnknownKey(f"The report contains an unknown key ({key})")
 
-        if key == "feedback-type":
-            forensic_report_data.feedback_type = value
-        elif key == "user-agent":
-            forensic_report_data.user_agent = value
-        elif key == "version":
-            forensic_report_data.version = value
-        elif key == "original-mail-from":
-            forensic_report_data.original_mail_from = value
-        elif key == "arrival-date":
-            try:
-                time = datetime.strptime(value, "%a, %d %b %Y %H:%M:%S %z")
-            except ValueError as _error:
-                raise InvalidTime from _error
+    # TODO: Create required check
 
-            forensic_report_data.arrival_date = time
-        elif key == "source-ip":
-            try:
-                ip_addr = ip_address(value)
-            except ValueError as _error:
-                raise ValueError from _error
-
-            if isinstance(ip_addr, IPv4Address):
-                forensic_report_data.source_ipv4 = ip_addr
-            elif isinstance(ip_addr, IPv6Address):
-                forensic_report_data.source_ipv6 = ip_addr
-        elif key == "reported-domain":
-            forensic_report_data.reported_domain = value
-        elif key == "original-envelope-id":
-            forensic_report_data.original_envelope_id = value
-        elif key == "authentication-results":
-            forensic_report_data.authentication_results = value
-        elif key == "dkim-domain":
-            forensic_report_data.dkim_domain = value
-        elif key == "delivery-result":
-            forensic_report_data.delivery_result = value
-        elif key == "identity-alignment":
-            forensic_report_data.identity_alignment = value
-        else:
-            raise UnknownKey(f"The report contains an unknown key ({key})")
-
-    forensic_report.report_data = forensic_report_data
-
+    forensic_report.add_report_data(forensic_report_data)
+    print(forensic_report.get_dict())
     # Sample
     try:
         sample = sample.encode("utf-8") if not isinstance(sample, bytes) else sample

@@ -7,6 +7,7 @@ import io
 import logging
 
 from email import message_from_bytes
+from email import policy
 from email.message import EmailMessage
 
 from base64 import b64decode
@@ -78,7 +79,7 @@ class DmarcParser():
             data = open_file.read()
 
         raw_reports = self._get_file_data(data)
-        #print(raw_reports)
+
         if not raw_reports:
             return
 
@@ -215,16 +216,19 @@ class DmarcParser():
         report_type = None
 
         data = data.encode("utf-8") if not isinstance(data, bytes) else data
-        msg = message_from_bytes(data, _class=EmailMessage)
+        msg = message_from_bytes(data, _class=EmailMessage, policy=policy.default)
 
-        for attachment in msg.iter_attachments():
+        #for attachment in msg.iter_attachments():
+        for attachment in msg.walk():
             content_type = attachment.get_content_type()
-            payload = attachment.get_payload()
+            if content_type.startswith("multipart"):
+                continue
+            payload = attachment.get_content()
 
-            if isinstance(payload, list):
-                # Since we iter through attachments, we could get away with assuming [0].
-                # Might regret this.
-                payload = payload[0].get_payload()
+            # if isinstance(payload, list):
+            #     # Since we iter through attachments, we could get away with assuming [0].
+            #     # Might regret this.
+            #     payload = payload[0].get_content()
 
             file_encoding = attachment.get("content-transfer-encoding")
 
@@ -246,7 +250,7 @@ class DmarcParser():
                 else:
                     output[report_type]["report"] =  payload
 
-            elif content_type == "message/rfc822":
+            elif content_type == "message/rfc822" or content_type == "text/rfc822-headers":
                 report_type = "forensic"
 
                 try:
@@ -298,12 +302,12 @@ class DmarcParser():
         Output: ForensicReport object        
         """
 
-        if "report" in report and "sample" in report:
+        if "report" not in report or "sample" not in report:
             return None
 
         return forensic_report_from_string(
-            report["forensic"]["report"],
-            report["forensic"]["sample"],
+            report["report"],
+            report["sample"],
         )
 
     def _get_file_data(self, data: bytes) -> dict:
