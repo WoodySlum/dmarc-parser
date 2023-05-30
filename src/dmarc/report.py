@@ -507,11 +507,8 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 forensic_report_data.reported_uri = _add_string(reported_uri, value)
             case _:
                 print("WTF is: ", key, value)
-
                 continue
                 #raise UnknownKey(f"The report contains an unknown key ({key})")
-
-    # TODO: Create required check
 
     forensic_report.add_report_data(forensic_report_data)
     if not forensic_report.is_report_valid():
