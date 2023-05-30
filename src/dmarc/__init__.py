@@ -79,7 +79,7 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
     queue.put(None)
     logger_p.join()
 
-def dmarc_from_file(path: str, log_level: int = logging.INFO):
+def dmarc_from_file(path: str, log_level: int = logging.INFO) -> dict|None:
     """ Parse a file """
     if not os.path.exists(path):
         raise InvalidPath
@@ -87,4 +87,4 @@ def dmarc_from_file(path: str, log_level: int = logging.INFO):
         raise InvalidFile
 
     parser = DmarcParser(log_level=log_level)
-    parser.read_file(Path(path))
+    return parser.read_file(Path(path))

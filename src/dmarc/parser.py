@@ -55,7 +55,7 @@ class DmarcParser():
             )
         self.reports = []
 
-    def read_file(self, path: str):
+    def read_file(self, path: str) -> dict|None:
         """
         Takes a path argument and returns a dictionary of parsed data.
         
@@ -68,12 +68,12 @@ class DmarcParser():
 
         if not path.exists() or not path.is_file():
             self.logger.debug("File %s could not be accessed", path)
-            return
+            return None
         try:
             open_file = path.open("rb")
         except FileNotFoundError:
             self.logger.debug("Could not find file %s", path)
-            return
+            return None
 
         with open_file:
             data = open_file.read()
@@ -81,7 +81,7 @@ class DmarcParser():
         raw_reports = self._get_file_data(data)
 
         if not raw_reports:
-            return
+            return None
 
         for report_type, raw_report in raw_reports.items():
             if "aggregate" in report_type:
@@ -97,11 +97,12 @@ class DmarcParser():
                 try:
                     self.reports.append({
                         "type": "forensic",
-                        "report": self.parse_forensic_report(raw_report),
+                        **self.parse_forensic_report(raw_report).get_dict(),
                     })
                 except (InvalidForensicSample, UnknownKey) as _error:
                     self.logger.debug("ERROR: %s", _error)
                     continue
+        return self.reports
 
     def extract_report_from_zip(self, data: io.BytesIO) -> dict:
         """
@@ -239,6 +240,9 @@ class DmarcParser():
             if content_type == "message/feedback-report":
                 report_type = "forensic"
 
+                if isinstance(payload, EmailMessage):
+                    payload = str(payload)
+
                 try:
                     payload = payload.decode("utf-8") if isinstance(payload, bytes) else payload
                 except UnicodeDecodeError:
@@ -252,6 +256,9 @@ class DmarcParser():
 
             elif content_type == "message/rfc822" or content_type == "text/rfc822-headers":
                 report_type = "forensic"
+
+                if isinstance(payload, EmailMessage):
+                    payload = str(payload)
 
                 try:
                     payload = payload.decode("utf-8") if isinstance(payload, bytes) else payload

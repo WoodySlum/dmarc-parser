@@ -28,7 +28,7 @@ Version: 1
 Original-Mail-From: anexample.reply@a.sender.example
 Original-Envelope-Id: o3F52gxO029144
 Authentication-Results: mta1011.mail.tp2.receiver.example;
-dkim=fail (bodyhash) header.d=sender.example
+    dkim=fail (bodyhash) header.d=sender.example
 Auth-Failure: bodyhash
 DKIM-Canonicalized-Body: VGhpcyBpcyBhIG1lc3NhZ2UgYm9keSB0
     aGF0IGdvdCBtb2RpZmllZCBpbiB0cmFuc2l0LgoKQXQgdGhlIHNhbWU

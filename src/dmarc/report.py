@@ -9,7 +9,9 @@ import xml.etree.ElementTree as elementTree
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from email import message_from_bytes
+from email import policy
 from email.message import EmailMessage
+from email.utils import parsedate_to_datetime
 
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
@@ -22,6 +24,11 @@ class InvalidTime(Exception):
 
 class InvalidOrgName(Exception):
     """ Exception raised for error in the organization name """
+    def __init__(self, msg):
+        super().__init__(msg)
+
+class InvalidForensicReport(Exception):
+    """ Exception raised for error in the report """
     def __init__(self, msg):
         super().__init__(msg)
 
@@ -79,8 +86,8 @@ class Record:
     record_header_from: str = None
 
     # Auth Results
-    record_spf_domain:str = None
-    record_spf_result:str = None
+    record_spf_domain: str = None
+    record_spf_result: str = None
 
 class AggregateReport():
     """
@@ -196,7 +203,7 @@ class ForensicReportData:
     original_mail_from: str = None
     original_rcpt_to: str = None
     reported_domain: str = None
-    reported_uri: str = None
+    reported_uri: str|list = None
     reporting_mta: str = None
     source_ipv4: IPv4Address = None
     source_ipv6: IPv6Address = None
@@ -219,20 +226,61 @@ class ForensicReport():
 
     def add_sample_data(self, data: bytes):
         """ s """
-        try:
-            data = data.encode("utf-8") if not isinstance(data, bytes) else data
-        except (UnicodeDecodeError, AttributeError) as _error:
-            raise InvalidForensicSample("Forensic sample could not be encoded") from _error
+
+        if not isinstance(data, bytes):
+            raise ValueError("Sample data are not bytes")
 
         self.sample_data = message_from_bytes(data, _class=EmailMessage)
 
-    def get_dict(self):
+    def get_dict(self) -> dict:
         """ d """
-        return asdict(self.report_data)
+        report = asdict(self.report_data)
+        sample = {}
+        if isinstance(self.sample_data, EmailMessage):
+            for key, value in self.sample_data.items():
+                sample[key] = value
+        return {"report": {**report}, "sample": {**sample}}
+
+    def is_report_valid(self) -> bool:
+        """ d """
+        match self.report_data.feedback_type:
+            case "abuse":
+                required_fields = [
+                    self.report_data.feedback_type,
+                    self.report_data.user_agent,
+                    self.report_data.version,
+                    self.report_data.reported_domain,
+                    self.report_data.authentication_results,
+                ]
+            case "auth-failure":
+                required_fields = [
+                    self.report_data.feedback_type,
+                    self.report_data.user_agent,
+                    self.report_data.version,
+                    self.report_data.reported_domain,
+                    self.report_data.authentication_results,
+                    self.report_data.auth_failure,
+                ]
+            case _:
+                required_fields = []
+
+        counter = 0
+        for field in required_fields:
+            counter += 1
+            if field:
+                continue
+            print("missing field: ", field, counter)
+            return False
+
+        return True
+
+    def is_sample_valid(self) -> bool:
+        """ d """
+        return True
 
     def __repr__(self):
         """ d """
-        return "hej"
+        return str(self.get_dict())
 
 # pylint: disable-next=too-many-locals, too-many-statements
 def aggregate_report_from_xml(xml: bytes) -> AggregateReport:
@@ -372,34 +420,28 @@ def aggregate_report_from_xml(xml: bytes) -> AggregateReport:
 
     return aggregate_report
 
-# pylint: disable-next=too-many-locals, too-many-branches
+# pylint: disable-next=too-many-locals, too-many-branches, too-many-statements
 def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
     """ d """
     forensic_report = ForensicReport()
     forensic_report_data = ForensicReportData()
 
-    msg = message_from_bytes(report.encode("utf-8"), _class=EmailMessage)
-    print("Feedback-Type: {}".format(msg.get("feedback-type")))
-    # TODO: Convert match-case with msg.get("header")
-    return
-
-    raw_report = report
-    for line in raw_report.splitlines():
-        key, value = line.split(":", 1)
+    msg = message_from_bytes(report.encode("utf-8"), _class=EmailMessage, policy=policy.default)
+    for key, value in msg.items():
         key = key.lower().strip()
         value = value.strip()
         match key:
-            case "feedback-type": # required, once, auth-failure/abuse
+            case "feedback-type": # required, once, auth-failure/abuse/fraud/viurs/other
                 if forensic_report_data.feedback_type is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Feedback-type is used multiple times")
                 forensic_report_data.feedback_type = value
             case "user-agent": # required, once
                 if forensic_report_data.user_agent is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("User-Agent is used multiple times")
                 forensic_report_data.user_agent = value
             case "version": # required, once
                 if forensic_report_data.version is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Version is used multiple times")
                 if not isinstance(value, int):
                     try:
                         value = int(value)
@@ -408,24 +450,24 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 forensic_report_data.version = value
             case "original-mail-from": # optional, once
                 if forensic_report_data.original_mail_from is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Original-Mail-From is used multiple times")
                 forensic_report_data.original_mail_from = value
             case "arrival-date" | "received-date": # optional, once
                 if forensic_report_data.arrival_date is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Arrival-/Received-date is used multiple times")
                 try:
-                    time = datetime.strptime(value, "%a, %d %b %Y %H:%M:%S %z")
+                    time = parsedate_to_datetime(value)
                 except ValueError as _error:
-                    raise InvalidTime from _error
+                    raise InvalidTime("Date could not be parsed") from _error
                 forensic_report_data.arrival_date = time
             case "source-ip": # optional, once
                 if forensic_report_data.source_ipv4 is not None or \
                     forensic_report_data.source_ipv6 is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Source-IP is used multiple times")
                 try:
                     ip_addr = ip_address(value)
                 except ValueError as _error:
-                    raise ValueError from _error
+                    raise ValueError("Source-IP could not be parsed") from _error
                 if isinstance(ip_addr, IPv4Address):
                     forensic_report_data.source_ipv4 = ip_addr
                 elif isinstance(ip_addr, IPv6Address):
@@ -436,7 +478,7 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 forensic_report_data.original_envelope_id = value
             case "authentication-results": # required, once
                 if forensic_report_data.authentication_results is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Authentication-Results is used multiple times")
                 forensic_report_data.authentication_results = value
             case "dkim-domain":
                 forensic_report_data.dkim_domain = value
@@ -452,29 +494,48 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 forensic_report_data.auth_failure = value
             case "reporting-mta": # optional, once
                 if forensic_report_data.reporting_mta is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Reporting-MTA is used multiple times")
                 forensic_report_data.reporting_mta = value
             case "incidents": # optional, once
                 if forensic_report_data.incidents is not None:
-                    raise InvalidFormat("")
+                    raise InvalidFormat("Incidents is used multiple times")
                 forensic_report_data.incidents = value
             case "original-rcpt-to": # optional
                 forensic_report_data.original_rcpt_to = value
             case "reported-uri": # optional
-                forensic_report_data.reported_uri = value
+                reported_uri = forensic_report_data.reported_uri
+                forensic_report_data.reported_uri = _add_string(reported_uri, value)
             case _:
+                print("WTF is: ", key, value)
+
                 continue
                 #raise UnknownKey(f"The report contains an unknown key ({key})")
 
     # TODO: Create required check
 
     forensic_report.add_report_data(forensic_report_data)
-    print(forensic_report.get_dict())
+    if not forensic_report.is_report_valid():
+        raise InvalidForensicReport("Forensic report is missing required fields")
+
     # Sample
     try:
         sample = sample.encode("utf-8") if not isinstance(sample, bytes) else sample
     except (UnicodeDecodeError, AttributeError) as _error:
-        raise InvalidForensicSample("Forensic sample could not be encoded") from _error
+        # pylint: disable-next=line-too-long
+        raise InvalidForensicSample(f"Forensic sample could not be encoded: {str(_error)}") from _error
+
     forensic_report.add_sample_data(sample)
+    if not forensic_report.is_sample_valid():
+        raise InvalidForensicReport("Forensic sample is missing required fields")
 
     return forensic_report
+
+def _add_string(original: str|list, new_value: str) -> str|list:
+    if original is None:
+        return new_value
+
+    if isinstance(original, list):
+        original.append(new_value)
+        return original
+
+    return [original, new_value]
