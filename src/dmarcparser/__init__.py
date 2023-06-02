@@ -12,7 +12,6 @@ from multiprocessing import Process
 
 from .parser import DmarcParser
 from .logger import _custom_logger, _queue_logging
-from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE, SYSLOG_TO_SYSLOG
 
 class InvalidPath(Exception):
     """ Exception raised when path is not valid """
@@ -25,14 +24,14 @@ class InvalidFile(Exception):
         super().__init__(msg)
 
 # pylint: disable-next=line-too-long
-def _parse_file(path: str = None, logger_name: str = None, queue: Queue = None, log_level: int = logging.INFO):
+def _parse_file(path: str = None, logger_name: str = None, logger_queue: Queue = None, log_level: int = logging.INFO):
     """
     A method to support multiprocessing.
     Part of the support library and should not be used directly.
     """
     _logger = _custom_logger(
         logger_name=logger_name,
-        queue=queue,
+        queue=logger_queue,
         log_level=log_level,
     )
     parser = DmarcParser(_logger)
@@ -56,18 +55,16 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
     else:
         files_found = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
 
-    queue = Queue()
+    logger_queue = Queue()
     logger_name = "app"
-    logger_p = Process(target=_queue_logging, args=(logger_name, queue, log_level))
+    logger_p = Process(target=_queue_logging, args=(logger_name, logger_queue, log_level))
     logger_p.start()
 
     threads = []
-    counter = 0
     for path in files_found:
-        threads.append(Process(target=_parse_file, args=(path, logger_name, queue, log_level)))
-        counter += 1
-        if counter > 1:
-            break
+        threads.append(
+            Process(target=_parse_file, args=(path, logger_name, logger_queue, log_level))
+        )
 
     for thread in threads:
         thread.start()
@@ -76,7 +73,7 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
         thread.join()
 
     # Write 'None' do exit the loop inside _queue_logging().
-    queue.put(None)
+    logger_queue.put(None)
     logger_p.join()
 
 def dmarc_from_file(path: str, log_level: int = logging.INFO) -> dict|None:

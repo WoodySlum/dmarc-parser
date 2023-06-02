@@ -7,4 +7,5 @@ from dmarc import dmarc_from_file
 
 def test_normal():
     """ Test a normal """
-    assert dmarc_from_file("example/example.xml") is None
+    res = dmarc_from_file("example/example.xml")
+    assert res is not None

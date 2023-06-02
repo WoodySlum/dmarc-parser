@@ -10,8 +10,6 @@ from email import message_from_bytes
 from email import policy
 from email.message import EmailMessage
 
-from base64 import b64decode
-
 from zipfile import ZipFile, BadZipFile
 from gzip import GzipFile, BadGzipFile
 
@@ -22,21 +20,21 @@ from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE
 
 from .report import aggregate_report_from_xml, forensic_report_from_string
 from .report import AggregateReport, ForensicReport
-from .report import InvalidOrgName, InvalidTime, InvalidForensicSample, UnknownKey
+from .exceptions import InvalidOrgName, InvalidTime, InvalidForensicSample
 
 class DmarcParser():
     """
     Public functions:
      - read_file(file: str)
-     - extract_report_from_zip(data: io.BytesIO) -> dict
-     - extract_report_from_gzip(data: io.BytesIO) -> dict
-     - extract_report_from_xml(data: bytes) -> dict
-     - extract_report_from_eml(data: bytes) -> dict
-     - parse_aggregate_report(self, data: str) -> AggregateReport
-     - parse_forensic_report(self, data: str) -> ForensicReport
+     - extract_report_from_zip(data: io.BytesIO) -> dict|None
+     - extract_report_from_gzip(data: io.BytesIO) -> dict|None
+     - extract_report_from_xml(data: bytes) -> dict|None
+     - extract_report_from_eml(data: bytes) -> dict|None
+     - parse_aggregate_report(self, data: str) -> AggregateReport|None
+     - parse_forensic_report(self, data: str) -> ForensicReport|None
 
     Private functions:
-     - _get_file_data(data: bytes) -> dict
+     - _get_file_data(data: bytes) -> dict|None
      - _normalize_xml(xml: str) -> str
     """
 
@@ -78,7 +76,11 @@ class DmarcParser():
         with open_file:
             data = open_file.read()
 
-        raw_reports = self._get_file_data(data)
+        raw_reports = {}
+        try:
+            raw_reports = self._get_file_data(data)
+        except ValueError as _error:
+            self.logger.debug("ERROR: %s", _error)
 
         if not raw_reports:
             return None
@@ -88,7 +90,7 @@ class DmarcParser():
                 try:
                     self.reports.append({
                         "type": "aggregate",
-                        "report": self.parse_aggregate_report(raw_report),
+                        **self.parse_aggregate_report(raw_report).get_dict(),
                     })
                 except (InvalidOrgName, InvalidTime) as _error:
                     self.logger.debug("ERROR: %s", _error)
@@ -99,12 +101,18 @@ class DmarcParser():
                         "type": "forensic",
                         **self.parse_forensic_report(raw_report).get_dict(),
                     })
-                except (InvalidForensicSample, UnknownKey) as _error:
+                except (InvalidForensicSample) as _error:
                     self.logger.debug("ERROR: %s", _error)
                     continue
+
+        if not self.reports:
+            return None
+
+        self.logger.debug("%s", self.reports)
+
         return self.reports
 
-    def extract_report_from_zip(self, data: io.BytesIO) -> dict:
+    def extract_report_from_zip(self, data: io.BytesIO) -> dict|None:
         """
         Unzip the content from bytes.
         
@@ -140,7 +148,7 @@ class DmarcParser():
 
         return {"aggregate": {"report": xml}}
 
-    def extract_report_from_gzip(self, data: io.BytesIO) -> dict:
+    def extract_report_from_gzip(self, data: io.BytesIO) -> dict|None:
         """
         Unzip the content from bytes.
         
@@ -172,7 +180,7 @@ class DmarcParser():
 
         return {"aggregate": {"report": xml}}
 
-    def extract_report_from_xml(self, data: bytes) -> dict:
+    def extract_report_from_xml(self, data: bytes) -> dict|None:
         """
         Tries to extract xml from bytes.
         
@@ -203,7 +211,7 @@ class DmarcParser():
         return {"aggregate": {"report": xml}}
 
     # pylint: disable-next=too-many-branches
-    def extract_report_from_eml(self, data: bytes) -> dict:
+    def extract_report_from_eml(self, data: bytes) -> dict|None:
         """
         Tries to parse the raw text as EML.
         Extracts the attachments and then tries to extract the xml-data.
@@ -215,27 +223,25 @@ class DmarcParser():
         """
         output = {}
         report_type = None
+        try:
+            data = data.encode("utf-8") if not isinstance(data, bytes) else data
+        except (UnicodeDecodeError, AttributeError):
+            self.logger.debug("Extract EML: Could not encode data")
+            return None
 
-        data = data.encode("utf-8") if not isinstance(data, bytes) else data
         msg = message_from_bytes(data, _class=EmailMessage, policy=policy.default)
 
-        #for attachment in msg.iter_attachments():
+        # len(msg) == numbers of headers
+        # If below one, consider the email to be broken
+        if len(msg) < 1:
+            raise ValueError("'EmailMessage' does not contain any headers")
+
         for attachment in msg.walk():
             content_type = attachment.get_content_type()
             if content_type.startswith("multipart"):
                 continue
+
             payload = attachment.get_content()
-
-            # if isinstance(payload, list):
-            #     # Since we iter through attachments, we could get away with assuming [0].
-            #     # Might regret this.
-            #     payload = payload[0].get_content()
-
-            file_encoding = attachment.get("content-transfer-encoding")
-
-            if file_encoding and file_encoding.lower() == "base64":
-                payload = payload.encode("ascii")
-                payload = b64decode(payload)
 
             if content_type == "message/feedback-report":
                 report_type = "forensic"
@@ -254,7 +260,7 @@ class DmarcParser():
                 else:
                     output[report_type]["report"] =  payload
 
-            elif content_type == "message/rfc822" or content_type == "text/rfc822-headers":
+            elif content_type in ("message/rfc822", "text/rfc822-headers"):
                 report_type = "forensic"
 
                 if isinstance(payload, EmailMessage):
@@ -280,7 +286,7 @@ class DmarcParser():
 
         return output
 
-    def parse_aggregate_report(self, report: dict) -> AggregateReport:
+    def parse_aggregate_report(self, report: dict) -> AggregateReport|None:
         """
         Parse the aggregate report.
         
@@ -300,7 +306,7 @@ class DmarcParser():
 
         return aggregate_report_from_xml(xml)
 
-    def parse_forensic_report(self, report: dict) -> ForensicReport:
+    def parse_forensic_report(self, report: dict) -> ForensicReport|None:
         """
         Parse the forensic report and sample
         
@@ -317,13 +323,13 @@ class DmarcParser():
             report["sample"],
         )
 
-    def _get_file_data(self, data: bytes) -> dict:
+    def _get_file_data(self, data: bytes) -> dict|None:
         """ Guesses the signature and then extract the unparsed / raw reports """
         reports = None
         if data.startswith(self.ZIP_SIGNATURE):
             reports = self.extract_report_from_zip(io.BytesIO(data))
         elif data.startswith(self.GZIP_SIGNATURE):
-            reports = self.extract_report_from_gzip(io.BytesIO(data))
+            reports = self.extract_report_from_gzip(data)
         elif data.lstrip().startswith(self.XML_SIGNATURE):
             reports = self.extract_report_from_xml(data)
         else:

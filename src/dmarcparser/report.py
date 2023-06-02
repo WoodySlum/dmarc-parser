@@ -16,36 +16,8 @@ from email.utils import parsedate_to_datetime
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from .misc import _sanitize_input
-
-class InvalidTime(Exception):
-    """ Exception raised for errors in the input for time """
-    def __init__(self, msg):
-        super().__init__(msg)
-
-class InvalidOrgName(Exception):
-    """ Exception raised for error in the organization name """
-    def __init__(self, msg):
-        super().__init__(msg)
-
-class InvalidForensicReport(Exception):
-    """ Exception raised for error in the report """
-    def __init__(self, msg):
-        super().__init__(msg)
-
-class InvalidForensicSample(Exception):
-    """ Exception raised for error in the sample """
-    def __init__(self, msg):
-        super().__init__(msg)
-
-class UnknownKey(Exception):
-    """ Exception raised for unknown keys in the key/value pairs """
-    def __init__(self, msg):
-        super().__init__(msg)
-
-class InvalidFormat(Exception):
-    """ Exception raised when data do not follow RFC """
-    def __init__(self, msg):
-        super().__init__(msg)
+from .exceptions import InvalidTime, InvalidOrgName, InvalidFormat
+from .exceptions import InvalidForensicReport, InvalidForensicSample
 
 # RFC 7489
 # https://datatracker.ietf.org/doc/html/rfc7489
@@ -178,7 +150,13 @@ class AggregateReport():
 
     def get_dict(self):
         """ d """
-        return self.dict
+        return {
+            "report": {
+                "metadata": {**asdict(self.metadata)},
+                "policy": {**asdict(self.policy)},
+                "records": [asdict(record) for record in self.records],
+            },
+        }
 
     def __str__(self):
         return f"<{self.metadata.org_name}, {self.metadata.email}>"
@@ -188,10 +166,12 @@ class AggregateReport():
 @dataclass
 # pylint: disable-next=too-many-instance-attributes
 class ForensicReportData:
-    """ d """
+    """ Dataclass for the forensic report. Contains all the possible fields from the RFC """
     arrival_date: datetime = None
     auth_failure: str = None
     authentication_results: str = None
+    dkim_canonicalized_header: str = None
+    dkim_canonicalized_body: str = None
     dkim_domain: str = None
     dkim_identity: str = None
     dkim_selector: str = None
@@ -199,9 +179,9 @@ class ForensicReportData:
     feedback_type: str = None
     identity_alignment: str = None
     incidents: int = None
-    original_envelope_id: str = None
+    original_envelope_id: str|list = None
     original_mail_from: str = None
-    original_rcpt_to: str = None
+    original_rcpt_to: str|list = None
     reported_domain: str = None
     reported_uri: str|list = None
     reporting_mta: str = None
@@ -212,7 +192,7 @@ class ForensicReportData:
 
 class ForensicReport():
     """
-    s
+    A forensic report class to organize and validate data.
     """
     def __init__(self):
         self.dict = {}
@@ -426,15 +406,90 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
     forensic_report = ForensicReport()
     forensic_report_data = ForensicReportData()
 
-    msg = message_from_bytes(report.encode("utf-8"), _class=EmailMessage, policy=policy.default)
+    # Report
+    if not isinstance(report, bytes):
+        try:
+            report = report.encode("utf-8")
+        except (UnicodeDecodeError, AttributeError) as _error:
+            raise ValueError("Could not encode report") from _error
+
+    msg = message_from_bytes(report, _class=EmailMessage, policy=policy.default)
     for key, value in msg.items():
         key = key.lower().strip()
         value = value.strip()
+
         match key:
+            case "arrival-date" | "received-date": # optional, once
+                if forensic_report_data.arrival_date is not None:
+                    raise InvalidFormat("Arrival-/Received-date is used multiple times")
+                try:
+                    time = parsedate_to_datetime(value)
+                except ValueError as _error:
+                    raise InvalidTime("Date could not be parsed") from _error
+                forensic_report_data.arrival_date = time
+            case "auth-failure": # required, adsp/bodyhash/revoked/signature/spf
+                if forensic_report_data.auth_failure is not None:
+                    raise InvalidFormat("Auth-Failure is used multiple times")
+                forensic_report_data.auth_failure = value
+            case "authentication-results": # required, once
+                if forensic_report_data.authentication_results is not None:
+                    raise InvalidFormat("Authentication-Results is used multiple times")
+                forensic_report_data.authentication_results = value
+            case "delivery-result": # optional, delivered/spam/policy/reject/other
+                forensic_report_data.delivery_result = value
+            case "dkim-canonicalized-header":
+                forensic_report_data.dkim_canonicalized_header = value
+            case "dkim_canonicalized_body":
+                forensic_report_data.dkim_canonicalized_body = value
+            case "dkim-domain":
+                forensic_report_data.dkim_domain = value
+            case "dkim-identity":
+                forensic_report_data.dkim_identity = value
+            case "dkim-selector":
+                forensic_report_data.dkim_selector = value
             case "feedback-type": # required, once, auth-failure/abuse/fraud/viurs/other
                 if forensic_report_data.feedback_type is not None:
                     raise InvalidFormat("Feedback-type is used multiple times")
                 forensic_report_data.feedback_type = value
+            case "identity-alignment":
+                forensic_report_data.identity_alignment = value
+            case "incidents": # optional, once
+                if forensic_report_data.incidents is not None:
+                    raise InvalidFormat("Incidents is used multiple times")
+                forensic_report_data.incidents = value
+            case "reported-domain": # required
+                if forensic_report_data.reported_domain is not None:
+                    raise InvalidFormat("Reported-Domain is used multiple times")
+                forensic_report_data.reported_domain = value
+            case "reporting-mta": # optional, once
+                if forensic_report_data.reporting_mta is not None:
+                    raise InvalidFormat("Reporting-MTA is used multiple times")
+                forensic_report_data.reporting_mta = value
+            case "original-envelope-id": # optional
+                original_envelope_id = forensic_report_data.original_envelope_id
+                forensic_report_data.original_envelope_id = _add_string(original_envelope_id, value)
+            case "original-mail-from": # optional, once
+                if forensic_report_data.original_mail_from is not None:
+                    raise InvalidFormat("Original-Mail-From is used multiple times")
+                forensic_report_data.original_mail_from = value
+            case "original-rcpt-to": # optional
+                original_rcpt_to = forensic_report_data.original_rcpt_to
+                forensic_report_data.original_rcpt_to = _add_string(original_rcpt_to, value)
+            case "reported-uri": # optional
+                reported_uri = forensic_report_data.reported_uri
+                forensic_report_data.reported_uri = _add_string(reported_uri, value)
+            case "source-ip": # optional, once
+                if forensic_report_data.source_ipv4 is not None or \
+                    forensic_report_data.source_ipv6 is not None:
+                    raise InvalidFormat("Source-IP is used multiple times")
+                try:
+                    ip_addr = ip_address(value)
+                except ValueError as _error:
+                    raise ValueError("Source-IP could not be parsed") from _error
+                if isinstance(ip_addr, IPv4Address):
+                    forensic_report_data.source_ipv4 = ip_addr
+                elif isinstance(ip_addr, IPv6Address):
+                    forensic_report_data.source_ipv6 = ip_addr
             case "user-agent": # required, once
                 if forensic_report_data.user_agent is not None:
                     raise InvalidFormat("User-Agent is used multiple times")
@@ -448,65 +503,8 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                     except ValueError as _error:
                         raise InvalidFormat("") from _error
                 forensic_report_data.version = value
-            case "original-mail-from": # optional, once
-                if forensic_report_data.original_mail_from is not None:
-                    raise InvalidFormat("Original-Mail-From is used multiple times")
-                forensic_report_data.original_mail_from = value
-            case "arrival-date" | "received-date": # optional, once
-                if forensic_report_data.arrival_date is not None:
-                    raise InvalidFormat("Arrival-/Received-date is used multiple times")
-                try:
-                    time = parsedate_to_datetime(value)
-                except ValueError as _error:
-                    raise InvalidTime("Date could not be parsed") from _error
-                forensic_report_data.arrival_date = time
-            case "source-ip": # optional, once
-                if forensic_report_data.source_ipv4 is not None or \
-                    forensic_report_data.source_ipv6 is not None:
-                    raise InvalidFormat("Source-IP is used multiple times")
-                try:
-                    ip_addr = ip_address(value)
-                except ValueError as _error:
-                    raise ValueError("Source-IP could not be parsed") from _error
-                if isinstance(ip_addr, IPv4Address):
-                    forensic_report_data.source_ipv4 = ip_addr
-                elif isinstance(ip_addr, IPv6Address):
-                    forensic_report_data.source_ipv6 = ip_addr
-            case "reported-domain": # required
-                forensic_report_data.reported_domain = value
-            case "original-envelope-id": # optional
-                forensic_report_data.original_envelope_id = value
-            case "authentication-results": # required, once
-                if forensic_report_data.authentication_results is not None:
-                    raise InvalidFormat("Authentication-Results is used multiple times")
-                forensic_report_data.authentication_results = value
-            case "dkim-domain":
-                forensic_report_data.dkim_domain = value
-            case "dkim-identity":
-                forensic_report_data.dkim_identity = value
-            case "dkim-selector":
-                forensic_report_data.dkim_selector = value
-            case "delivery-result": # optional, delivered/spam/policy/reject/other
-                forensic_report_data.delivery_result = value
-            case "identity-alignment":
-                forensic_report_data.identity_alignment = value
-            case "auth-failure": # required, adsp/bodyhash/revoked/signature/spf
-                forensic_report_data.auth_failure = value
-            case "reporting-mta": # optional, once
-                if forensic_report_data.reporting_mta is not None:
-                    raise InvalidFormat("Reporting-MTA is used multiple times")
-                forensic_report_data.reporting_mta = value
-            case "incidents": # optional, once
-                if forensic_report_data.incidents is not None:
-                    raise InvalidFormat("Incidents is used multiple times")
-                forensic_report_data.incidents = value
-            case "original-rcpt-to": # optional
-                forensic_report_data.original_rcpt_to = value
-            case "reported-uri": # optional
-                reported_uri = forensic_report_data.reported_uri
-                forensic_report_data.reported_uri = _add_string(reported_uri, value)
             case _:
-                print("WTF is: ", key, value)
+                print("Unknown: ", key, value)
                 continue
                 #raise UnknownKey(f"The report contains an unknown key ({key})")
 
@@ -528,6 +526,7 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
     return forensic_report
 
 def _add_string(original: str|list, new_value: str) -> str|list:
+    """ A simple function to convert a string to list if there are multiple values """
     if original is None:
         return new_value
 
