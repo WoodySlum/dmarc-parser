@@ -35,13 +35,13 @@ def _parse_file(path: str = None, return_queue: Queue = None, logger_name: str =
         log_level=log_level,
     )
 
-    try:
-        parser = DmarcParser(_logger)
-        return_values = parser.read_file(path)
-    except Exception:
-        return_queue.put({}) # Return something so thread-loop do not hang
-    else:
-        return_queue.put(return_values)
+    parser = DmarcParser(_logger)
+    return_values = parser.read_file(path)
+
+    if not return_values:
+        return
+
+    return_queue.put(return_values)
 
 def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = logging.INFO) -> dict:
     """

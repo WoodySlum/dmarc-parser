@@ -58,9 +58,10 @@ class DmarcParser():
         """
         Takes a path argument and returns a dictionary of parsed data.
         
-        Input: str
-        
-        Output: {"<sha256-hash>": {"type": "aggregate|forensic", "report": {"arrival_date": "..."} ... }}
+        Input:
+            str
+        Output:
+            {"<sha256-hash>": {"type": "aggregate|forensic", "report": {"arrival_date": "..."} ...}}
 
         """
         self.logger.debug("Reading %s", path)
