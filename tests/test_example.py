@@ -3,7 +3,7 @@
 
 """ Test module """
 
-from dmarc import dmarc_from_file
+from dmarcparser import dmarc_from_file
 
 def test_normal():
     """ Test a normal """

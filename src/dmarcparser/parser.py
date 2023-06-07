@@ -5,6 +5,7 @@
 
 import io
 import logging
+from hashlib import sha256
 
 from email import message_from_bytes
 from email import policy
@@ -59,7 +60,7 @@ class DmarcParser():
         
         Input: str
         
-        Output: 
+        Output: {"<sha256-hash>": {"type": "aggregate|forensic", "report": {"arrival_date": "..."} ... }}
 
         """
         self.logger.debug("Reading %s", path)
@@ -75,6 +76,9 @@ class DmarcParser():
 
         with open_file:
             data = open_file.read()
+
+        file_hash = sha256()
+        file_hash.update(data)
 
         raw_reports = {}
         try:
@@ -108,9 +112,10 @@ class DmarcParser():
         if not self.reports:
             return None
 
+        self.logger.debug("File hash: %s", file_hash.hexdigest())
         self.logger.debug("%s", self.reports)
 
-        return self.reports
+        return {file_hash.hexdigest(): self.reports}
 
     def extract_report_from_zip(self, data: io.BytesIO) -> dict|None:
         """
