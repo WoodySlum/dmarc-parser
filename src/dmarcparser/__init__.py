@@ -43,14 +43,14 @@ def _parse_file(path: str = None, return_queue: Queue = None, logger_name: str =
     else:
         return_queue.put(return_values)
 
-def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = logging.INFO) -> list:
+def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = logging.INFO) -> dict:
     """
     Parsing a folder, recursivly if needed, through multiprocessing.
     This method is provided for you convenience, although, writing your own is always recommended.
     Especially if you want a different logging handler than default (stdout + syslog).
     """
 
-    return_values = []
+    return_values = {}
 
     if not os.path.exists(folder):
         return return_values
@@ -89,7 +89,7 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
         ret = return_queue.get()
         if not ret: # will catch both None and {}
             continue
-        return_values.append(ret)
+        return_values.update(ret)
 
     for thread in threads:
         thread.join()
@@ -100,7 +100,7 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
 
     return return_values
 
-def dmarc_from_file(path: str, log_level: int = logging.INFO) -> list:
+def dmarc_from_file(path: str, log_level: int = logging.INFO) -> dict:
     """ Parse a file """
     if not os.path.exists(path):
         raise InvalidPath
@@ -108,4 +108,4 @@ def dmarc_from_file(path: str, log_level: int = logging.INFO) -> list:
         raise InvalidFile
 
     parser = DmarcParser(log_level=log_level)
-    return [parser.read_file(Path(path))]
+    return parser.read_file(Path(path))
