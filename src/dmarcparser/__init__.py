@@ -100,7 +100,7 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
 
     return return_values
 
-def dmarc_from_file(path: str, log_level: int = logging.INFO) -> dict|None:
+def dmarc_from_file(path: str, log_level: int = logging.INFO) -> list:
     """ Parse a file """
     if not os.path.exists(path):
         raise InvalidPath
@@ -108,4 +108,4 @@ def dmarc_from_file(path: str, log_level: int = logging.INFO) -> dict|None:
         raise InvalidFile
 
     parser = DmarcParser(log_level=log_level)
-    return parser.read_file(Path(path))
+    return [parser.read_file(Path(path))]
