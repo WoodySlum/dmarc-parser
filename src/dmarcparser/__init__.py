@@ -24,7 +24,7 @@ class InvalidFile(Exception):
         super().__init__(msg)
 
 # pylint: disable-next=line-too-long
-def _parse_file(path: str = None, logger_name: str = None, logger_queue: Queue = None, log_level: int = logging.INFO):
+def _parse_file(path: str = None, return_queue: Queue = None, logger_name: str = None, logger_queue: Queue = None, log_level: int = logging.INFO):
     """
     A method to support multiprocessing.
     Part of the support library and should not be used directly.
@@ -34,19 +34,28 @@ def _parse_file(path: str = None, logger_name: str = None, logger_queue: Queue =
         queue=logger_queue,
         log_level=log_level,
     )
-    parser = DmarcParser(_logger)
-    parser.read_file(path)
 
-def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = logging.INFO):
+    try:
+        parser = DmarcParser(_logger)
+        return_values = parser.read_file(path)
+    except Exception:
+        return_queue.put({}) # Return something so thread-loop do not hang
+    else:
+        return_queue.put(return_values)
+
+def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = logging.INFO) -> list:
     """
     Parsing a folder, recursivly if needed, through multiprocessing.
     This method is provided for you convenience, although, writing your own is always recommended.
     Especially if you want a different logging handler than default (stdout + syslog).
     """
+
+    return_values = []
+
     if not os.path.exists(folder):
-        return
+        return return_values
     if not os.path.isdir(folder):
-        return
+        return return_values
 
     files_found = []
     if recursive:
@@ -60,14 +69,27 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
     logger_p = Process(target=_queue_logging, args=(logger_name, logger_queue, log_level))
     logger_p.start()
 
+    return_queue = Queue()
+
     threads = []
     for path in files_found:
         threads.append(
-            Process(target=_parse_file, args=(path, logger_name, logger_queue, log_level))
+            Process(
+                target=_parse_file,
+                args=(path, return_queue, logger_name, logger_queue, log_level)
+            )
         )
 
+    # Start all the threads
     for thread in threads:
         thread.start()
+
+    # Grap all return values from thread
+    for thread in threads:
+        ret = return_queue.get()
+        if not ret: # will catch both None and {}
+            continue
+        return_values.append(ret)
 
     for thread in threads:
         thread.join()
@@ -75,6 +97,8 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
     # Write 'None' do exit the loop inside _queue_logging().
     logger_queue.put(None)
     logger_p.join()
+
+    return return_values
 
 def dmarc_from_file(path: str, log_level: int = logging.INFO) -> dict|None:
     """ Parse a file """
