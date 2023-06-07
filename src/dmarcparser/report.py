@@ -11,7 +11,7 @@ from dataclasses import dataclass, asdict
 from email import message_from_bytes
 from email import policy
 from email.message import EmailMessage
-from email.utils import parsedate_to_datetime
+from email.utils import parsedate_to_datetime, parseaddr
 
 from ipaddress import IPv4Address, IPv6Address, ip_address
 
@@ -179,14 +179,13 @@ class ForensicReportData:
     feedback_type: str = None
     identity_alignment: str = None
     incidents: int = None
-    original_envelope_id: str|list = None
+    original_envelope_id: list = None
     original_mail_from: str = None
-    original_rcpt_to: str|list = None
+    original_rcpt_to: list = None
     reported_domain: str = None
-    reported_uri: str|list = None
+    reported_uri: list = None
     reporting_mta: str = None
-    source_ipv4: IPv4Address = None
-    source_ipv6: IPv6Address = None
+    source_ip: str = None
     user_agent: str = None
     version: int = None
 
@@ -471,25 +470,30 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
             case "original-mail-from": # optional, once
                 if forensic_report_data.original_mail_from is not None:
                     raise InvalidFormat("Original-Mail-From is used multiple times")
-                forensic_report_data.original_mail_from = value
+                name, address = parseaddr(value)
+                forensic_report_data.original_mail_from = {
+                    "name": name,
+                    "address": address,
+                }
             case "original-rcpt-to": # optional
                 original_rcpt_to = forensic_report_data.original_rcpt_to
-                forensic_report_data.original_rcpt_to = _add_string(original_rcpt_to, value)
+                name, address = parseaddr(value)
+                forensic_report_data.original_rcpt_to = _add_string(
+                    original_rcpt_to,
+                    {"name": name, "address": address},
+                )
             case "reported-uri": # optional
                 reported_uri = forensic_report_data.reported_uri
                 forensic_report_data.reported_uri = _add_string(reported_uri, value)
             case "source-ip": # optional, once
-                if forensic_report_data.source_ipv4 is not None or \
-                    forensic_report_data.source_ipv6 is not None:
+                if forensic_report_data.source_ip is not None:
                     raise InvalidFormat("Source-IP is used multiple times")
                 try:
                     ip_addr = ip_address(value)
                 except ValueError as _error:
                     raise ValueError("Source-IP could not be parsed") from _error
-                if isinstance(ip_addr, IPv4Address):
-                    forensic_report_data.source_ipv4 = ip_addr
-                elif isinstance(ip_addr, IPv6Address):
-                    forensic_report_data.source_ipv6 = ip_addr
+                # Converting to IPv4Address/IPv6Address is only for verification.
+                forensic_report_data.source_ip = str(ip_addr)
             case "user-agent": # required, once
                 if forensic_report_data.user_agent is not None:
                     raise InvalidFormat("User-Agent is used multiple times")
@@ -525,13 +529,9 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
 
     return forensic_report
 
-def _add_string(original: str|list, new_value: str) -> str|list:
+def _add_string(original: list, new_value: str) -> list:
     """ A simple function to convert a string to list if there are multiple values """
-    if original is None:
-        return new_value
-
     if isinstance(original, list):
         original.append(new_value)
         return original
-
-    return [original, new_value]
+    return [new_value]
