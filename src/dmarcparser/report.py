@@ -184,7 +184,7 @@ class ForensicReportData:
     original_rcpt_to: list = None
     reported_domain: str = None
     reported_uri: list = None
-    reporting_mta: str = None
+    reporting_mta: dict = None
     source_ip: str = None
     user_agent: str = None
     version: int = None
@@ -463,7 +463,11 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
             case "reporting-mta": # optional, once
                 if forensic_report_data.reporting_mta is not None:
                     raise InvalidFormat("Reporting-MTA is used multiple times")
-                forensic_report_data.reporting_mta = value
+                name_type, name = value.split(";", 2)
+                forensic_report_data.reporting_mta = {
+                    "name": name.strip(),
+                    "name_type": name_type.strip(),
+                }
             case "original-envelope-id": # optional
                 original_envelope_id = forensic_report_data.original_envelope_id
                 forensic_report_data.original_envelope_id = _add_string(original_envelope_id, value)

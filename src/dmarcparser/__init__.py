@@ -23,6 +23,11 @@ class InvalidFile(Exception):
     def __init__(self, msg):
         super().__init__(msg)
 
+class InvalidFolder(Exception):
+    """ Exception raised when folder is not valid """
+    def __init__(self, msg):
+        super().__init__(msg)
+
 # pylint: disable-next=line-too-long
 def _parse_file(path: str = None, return_queue: Queue = None, logger_name: str = None, logger_queue: Queue = None, log_level: int = logging.INFO):
     """
@@ -53,9 +58,9 @@ def dmarc_from_folder(folder: str, recursive: bool = False, log_level: int = log
     return_values = {}
 
     if not os.path.exists(folder):
-        return return_values
+        raise InvalidPath
     if not os.path.isdir(folder):
-        return return_values
+        raise InvalidFolder
 
     files_found = []
     if recursive:
