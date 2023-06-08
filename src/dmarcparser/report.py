@@ -4,6 +4,7 @@
 """ This is a DMARC report library """
 
 import io
+import re
 import xml.etree.ElementTree as elementTree
 
 from datetime import datetime
@@ -200,7 +201,7 @@ class ForensicSampleData:
     from_address: str = None
     message_id: str = None
     reply_to_address: str = None
-    received: str = None
+    received: list = None
     to_addresses: list = None
     subject: str = None
 
@@ -441,9 +442,15 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 if forensic_report_data.auth_failure is not None:
                     raise InvalidFormat("Auth-Failure is used multiple times")
                 forensic_report_data.auth_failure = value
-            case "authentication-results": # required, once
+            case "authentication-results":
+                # Required, once.
+                # Parse with this RFC:
+                # https://www.rfc-editor.org/rfc/rfc5451#section-2.2
                 if forensic_report_data.authentication_results is not None:
                     raise InvalidFormat("Authentication-Results is used multiple times")
+                counter = 1
+                while counter > 0:
+                    (value, counter) = re.subn('  ', ' ', value)
                 forensic_report_data.authentication_results = value
             case "delivery-result": # optional, delivered/spam/policy/reject/other
                 forensic_report_data.delivery_result = value
@@ -474,7 +481,7 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
             case "reporting-mta": # optional, once
                 if forensic_report_data.reporting_mta is not None:
                     raise InvalidFormat("Reporting-MTA is used multiple times")
-                name_type, name = value.split(";", 2)
+                name_type, name = value.split(";", 1)
                 forensic_report_data.reporting_mta = {
                     "name": name.strip(),
                     "name_type": name_type.strip(),
@@ -546,8 +553,13 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
 
         match key:
             case "authentication-results":
+                # Parse results with this RFC:
+                # https://www.rfc-editor.org/rfc/rfc5451#section-2.2
                 if forensic_sample_data.authentication_results is not None:
                     raise InvalidFormat("Authentication results is used multiple times")
+                counter = 1
+                while counter > 0:
+                    (value, counter) = re.subn('  ', ' ', value)
                 forensic_sample_data.authentication_results = value
             case "date":
                 if forensic_sample_data.date is not None:
@@ -583,6 +595,14 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 }
             case "received":
                 received = forensic_sample_data.received
+                info, time = value.split(";", 1)
+
+                # Parse Received: with this RFC:
+                # https://www.rfc-editor.org/rfc/rfc5321#section-4.4
+                counter = 1
+                while counter > 0:
+                    (info, counter) = re.subn('  ', ' ', info)
+
                 forensic_sample_data.received = _add_string(
                     received,
                     value,
