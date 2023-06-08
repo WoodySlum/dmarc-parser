@@ -579,12 +579,14 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 name, address = parseaddr(value)
                 forensic_sample_data.reply_to_address = {
                     "name": name,
-                    "address": address
+                    "address": address,
                 }
             case "received":
-                if forensic_sample_data.received is not None:
-                    raise InvalidFormat("Received is used multiple times")
-                forensic_sample_data.received = value
+                received = forensic_sample_data.received
+                forensic_sample_data.received = _add_string(
+                    received,
+                    value,
+                )
             case "to":
                 to_addresses = forensic_sample_data.to_addresses
                 name, address = parseaddr(value)

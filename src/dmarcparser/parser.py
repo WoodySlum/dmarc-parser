@@ -21,7 +21,7 @@ from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE
 
 from .report import aggregate_report_from_xml, forensic_report_from_string
 from .report import AggregateReport, ForensicReport
-from .exceptions import InvalidOrgName, InvalidTime, InvalidForensicSample
+from .exceptions import InvalidOrgName, InvalidTime, InvalidForensicSample, InvalidFormat
 
 class DmarcParser():
     """
@@ -106,7 +106,7 @@ class DmarcParser():
                         "type": "forensic",
                         **self.parse_forensic_report(raw_report).get_dict(),
                     })
-                except (InvalidForensicSample) as _error:
+                except (InvalidForensicSample, InvalidFormat, ValueError) as _error:
                     self.logger.debug("Error parsing forensic report/sample: %s", _error)
                     continue
 
