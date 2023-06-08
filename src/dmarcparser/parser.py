@@ -85,7 +85,7 @@ class DmarcParser():
         try:
             raw_reports = self._get_file_data(data)
         except ValueError as _error:
-            self.logger.debug("ERROR: %s", _error)
+            self.logger.debug("Error reading files: %s", _error)
 
         if not raw_reports:
             return None
@@ -98,7 +98,7 @@ class DmarcParser():
                         **self.parse_aggregate_report(raw_report).get_dict(),
                     })
                 except (InvalidOrgName, InvalidTime) as _error:
-                    self.logger.debug("ERROR: %s", _error)
+                    self.logger.debug("Error parsing aggregated report: %s", _error)
                     continue
             elif "forensic" in report_type:
                 try:
@@ -107,7 +107,7 @@ class DmarcParser():
                         **self.parse_forensic_report(raw_report).get_dict(),
                     })
                 except (InvalidForensicSample) as _error:
-                    self.logger.debug("ERROR: %s", _error)
+                    self.logger.debug("Error parsing forensic report/sample: %s", _error)
                     continue
 
         if not self.reports:
@@ -165,7 +165,7 @@ class DmarcParser():
         """
         xml = None
         try:
-            gzip_file = GzipFile(data)
+            gzip_file = GzipFile(fileobj=data)
         except BadGzipFile:
             self.logger.debug("Extract GZIP: The data is not GZIP")
             return None
@@ -335,7 +335,7 @@ class DmarcParser():
         if data.startswith(self.ZIP_SIGNATURE):
             reports = self.extract_report_from_zip(io.BytesIO(data))
         elif data.startswith(self.GZIP_SIGNATURE):
-            reports = self.extract_report_from_gzip(data)
+            reports = self.extract_report_from_gzip(io.BytesIO(data))
         elif data.lstrip().startswith(self.XML_SIGNATURE):
             reports = self.extract_report_from_xml(data)
         else:

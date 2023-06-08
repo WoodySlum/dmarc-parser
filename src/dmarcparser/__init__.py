@@ -44,6 +44,9 @@ def _parse_file(path: str = None, return_queue: Queue = None, logger_name: str =
     return_values = parser.read_file(path)
 
     if not return_values:
+        # Return something to queue, even on errors.
+        # Will otherwise hang.
+        return_queue.put("")
         return
 
     return_queue.put(return_values)

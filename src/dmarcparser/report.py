@@ -189,6 +189,21 @@ class ForensicReportData:
     user_agent: str = None
     version: int = None
 
+@dataclass
+# pylint: disable-next=too-many-instance-attributes
+class ForensicSampleData:
+    """ s """
+    from_address: str = None
+    authentication_results: str = None
+    date: datetime = None
+    dkim_signature: str = None
+    from_address: str = None
+    message_id: str = None
+    reply_to_address: str = None
+    received: str = None
+    to_addresses: list = None
+    subject: str = None
+
 class ForensicReport():
     """
     A forensic report class to organize and validate data.
@@ -196,28 +211,24 @@ class ForensicReport():
     def __init__(self):
         self.dict = {}
 
-        self.report_data = None  # ForensicReportData()
-        self.sample_data = None  # EmailMessage()
+        self.report_data = ForensicReportData()
+        self.sample_data = ForensicSampleData()
 
     def add_report_data(self, data: ForensicReportData):
         """ s """
         self.report_data = data
 
-    def add_sample_data(self, data: bytes):
+    def add_sample_data(self, data: ForensicSampleData):
         """ s """
-
-        if not isinstance(data, bytes):
-            raise ValueError("Sample data are not bytes")
-
-        self.sample_data = message_from_bytes(data, _class=EmailMessage)
+        self.sample_data = data
 
     def get_dict(self) -> dict:
         """ d """
         report = asdict(self.report_data)
-        sample = {}
-        if isinstance(self.sample_data, EmailMessage):
-            for key, value in self.sample_data.items():
-                sample[key] = value
+        sample = asdict(self.sample_data)
+#        if isinstance(self.sample_data, EmailMessage):
+#            for key, value in self.sample_data.items():
+#                sample[key] = value
         return {"report": {**report}, "sample": {**sample}}
 
     def is_report_valid(self) -> bool:
@@ -521,13 +532,75 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
         raise InvalidForensicReport("Forensic report is missing required fields")
 
     # Sample
+    forensic_sample_data = ForensicSampleData()
     try:
         sample = sample.encode("utf-8") if not isinstance(sample, bytes) else sample
     except (UnicodeDecodeError, AttributeError) as _error:
         # pylint: disable-next=line-too-long
         raise InvalidForensicSample(f"Forensic sample could not be encoded: {str(_error)}") from _error
 
-    forensic_report.add_sample_data(sample)
+    sample = message_from_bytes(sample, _class=EmailMessage, policy=policy.default)
+    for key, value in sample.items():
+        key = key.lower().strip()
+        value = value.strip()
+
+        match key:
+            case "authentication-results":
+                if forensic_sample_data.authentication_results is not None:
+                    raise InvalidFormat("Authentication results is used multiple times")
+                forensic_sample_data.authentication_results = value
+            case "date":
+                if forensic_sample_data.date is not None:
+                    raise InvalidFormat("Date is used multiple times")
+                try:
+                    time = parsedate_to_datetime(value)
+                except ValueError as _error:
+                    raise InvalidTime("Date could not be parsed") from _error
+                forensic_sample_data.date = time
+            case "dkim-signature":
+                if forensic_sample_data.dkim_signature is not None:
+                    raise InvalidFormat("DKIM Signature is used multiple times")
+                forensic_sample_data.dkim_signature = value
+            case "from":
+                if forensic_sample_data.from_address is not None:
+                    raise InvalidFormat("From is used multiple times")
+                name, address = parseaddr(value)
+                forensic_sample_data.from_address = {
+                    "name": name,
+                    "address": address
+                }
+            case "message-id":
+                if forensic_sample_data.message_id is not None:
+                    raise InvalidFormat("Message-ID is used multiple times")
+                forensic_sample_data.message_id = value
+            case "reply-to":
+                if forensic_sample_data.reply_to_address is not None:
+                    raise InvalidFormat("Reply-To is used multiple times")
+                name, address = parseaddr(value)
+                forensic_sample_data.reply_to_address = {
+                    "name": name,
+                    "address": address
+                }
+            case "received":
+                if forensic_sample_data.received is not None:
+                    raise InvalidFormat("Received is used multiple times")
+                forensic_sample_data.received = value
+            case "to":
+                to_addresses = forensic_sample_data.to_addresses
+                name, address = parseaddr(value)
+                forensic_sample_data.to_addresses = _add_string(
+                    to_addresses,
+                    {"name": name, "address": address},
+                )
+            case "subject":
+                if forensic_sample_data.subject is not None:
+                    raise InvalidFormat("Subject is used multiple times")
+                forensic_sample_data.subject = value
+            case _:
+                print("Unknown: ", key, value)
+                continue
+
+    forensic_report.add_sample_data(forensic_sample_data)
     if not forensic_report.is_sample_valid():
         raise InvalidForensicReport("Forensic sample is missing required fields")
 

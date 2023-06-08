@@ -55,27 +55,27 @@ Content-Type: text/rfc822-headers
 Content-Transfer-Encoding: 7bit
 
 Authentication-Results: mta1011.mail.tp2.receiver.example;
-dkim=fail (bodyhash) header.d=sender.example;
-spf=pass smtp.mailfrom=anexample.reply@a.sender.example
+    dkim=fail (bodyhash) header.d=sender.example;
+    spf=pass smtp.mailfrom=anexample.reply@a.sender.example
 Received: from smtp-out.sender.example
-by mta1011.mail.tp2.receiver.example
-with SMTP id oB85W8xV000169;
-Sat, 08 Oct 2011 13:15:58 -0700 (PDT)
+    by mta1011.mail.tp2.receiver.example
+    with SMTP id oB85W8xV000169;
+    Sat, 08 Oct 2011 13:15:58 -0700 (PDT)
 DKIM-Signature: v=1; c=relaxed/simple; a=rsa-sha256;
-s=testkey; d=sender.example; h=From:To:Subject:Date;
-bh=2jUSOH9NhtVGCQWNr9BrIAPreKQjO6Sn7XIkfJVOzv8=;
-b=AuUoFEfDxTDkHlLXSZEpZj79LICEps6eda7W3deTVFOk4yAUoqOB
-4nujc7YopdG5dWLSdNg6xNAZpOPr+kHxt1IrE+NahM6L/LbvaHut
-KVdkLLkpVaVVQPzeRDI009SO2Il5Lu7rDNH6mZckBdrIx0orEtZV
-4bmp/YzhwvcubU4=
+    s=testkey; d=sender.example; h=From:To:Subject:Date;
+    bh=2jUSOH9NhtVGCQWNr9BrIAPreKQjO6Sn7XIkfJVOzv8=;
+    b=AuUoFEfDxTDkHlLXSZEpZj79LICEps6eda7W3deTVFOk4yAUoqOB
+    4nujc7YopdG5dWLSdNg6xNAZpOPr+kHxt1IrE+NahM6L/LbvaHut
+    KVdkLLkpVaVVQPzeRDI009SO2Il5Lu7rDNH6mZckBdrIx0orEtZV
+    4bmp/YzhwvcubU4=
 Received: from mail.sender.example
-by smtp-out.sender.example
-with SMTP id o3F52gxO029144;
-Sat, 08 Oct 2011 13:15:31 -0700 (PDT)
+    by smtp-out.sender.example
+    with SMTP id o3F52gxO029144;
+    Sat, 08 Oct 2011 13:15:31 -0700 (PDT)
 Received: from internal-client-001.sender.example
-by mail.sender.example
-with SMTP id o3F3BwdY028431;
-Sat, 08 Oct 2011 13:15:24 -0700 (PDT)
+    by mail.sender.example
+    with SMTP id o3F3BwdY028431;
+    Sat, 08 Oct 2011 13:15:24 -0700 (PDT)
 Date: Sat, 8 Oct 2011 16:15:24 -0400 (EDT)
 Reply-To: anexample.reply@a.sender.example
 From: anexample@a.sender.example
@@ -83,4 +83,4 @@ To: someuser@receiver.example
 Subject: You have a new bill from your bank
 Message-ID: <87913910.1318094604546@out.sender.example>
 
---------------Boundary-00=_3BCR4Y7kX93yP9uUPRhg--
+--------------Boundary-00=_3BCR4Y7kX93yP9uUPRhg--   
