@@ -3,11 +3,11 @@ From: dmarc-reporting@mail.receiver.example
 Date: Fri, Feb 15 2002 16:54:30 -0800
 To: dmarc-feedback@example.com
 Subject: Report Domain: example.com
-    Submitter: mail.receiver.example
-    Report-ID: <2002.02.15.1>
+ Submitter: mail.receiver.example
+ Report-ID: <2002.02.15.1>
 MIME-Version: 1.0
 Content-Type: multipart/alternative;
-    boundary="----=_NextPart_000_024E_01CC9B0A.AFE54C00"
+ boundary="----=_NextPart_000_024E_01CC9B0A.AFE54C00"
 Content-Language: en-us
 
 This is a multipart message in MIME format.
@@ -22,8 +22,8 @@ This is an aggregate report from mail.receiver.example.
 Content-Type: application/gzip
 Content-Transfer-Encoding: base64
 Content-Disposition: attachment;
-    filename="mail.receiver.example!example.com!
-            1013662812!1013749130.gz"
+ filename="mail.receiver.example!example.com!
+ 1013662812!1013749130.gz"
 
 H4sICN4QcWQEAGV4YW1wbGUueG1sAO1Uy27bMBC8F+g/CL5XlGQnSAuG6alf0J4FmlzZbMQH
 SCpN/74rPhzbDZBbTjlpOTv7GA4h+vCs5+YJfFDW3G/6tts0YISVyhzuN79+/vhyt2ke2OdP

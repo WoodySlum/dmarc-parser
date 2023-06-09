@@ -398,10 +398,11 @@ def aggregate_report_from_xml(xml: bytes) -> AggregateReport:
             source_ip = row.find(".//source_ip")
             source_ip = "" if source_ip is None or source_ip.text is None else source_ip.text
             try:
-                _ = ip_address(source_ip)
+                ip_addr = ip_address(source_ip)
             except ValueError:
                 # Ignore row is IP format is invalid
                 continue
+            source_ip = str(ip_addr)
 
             ## Record count
             count = row.find(".//count")
@@ -526,9 +527,11 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 except ValueError as _error:
                     raise InvalidTime("Date could not be parsed") from _error
                 forensic_report_data.arrival_date = time
-            case "auth-failure": # required, adsp/bodyhash/revoked/signature/spf
+            case "auth-failure": # required?
                 if forensic_report_data.auth_failure is not None:
                     raise InvalidFormat("Auth-Failure is used multiple times")
+                if value not in {"adsp", "bodyhash", "revoked", "signature", "spf"}:
+                    raise ValueError("Auth-Failure got an unknown value according to RFC6591")
                 forensic_report_data.auth_failure = value
             case "authentication-results":
                 # Required, once.
@@ -540,7 +543,9 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 while counter > 0:
                     (value, counter) = re.subn('  ', ' ', value)
                 forensic_report_data.authentication_results = value
-            case "delivery-result": # optional, delivered/spam/policy/reject/other
+            case "delivery-result": # optional
+                if value not in {"delivered", "spam", "policy", "reject", "other"}:
+                    value = "other"
                 forensic_report_data.delivery_result = value
             case "dkim-canonicalized-header":
                 forensic_report_data.dkim_canonicalized_header = value
@@ -552,9 +557,11 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                 forensic_report_data.dkim_identity = value
             case "dkim-selector":
                 forensic_report_data.dkim_selector = value
-            case "feedback-type": # required, once, auth-failure/abuse/fraud/viurs/other
+            case "feedback-type": # required
                 if forensic_report_data.feedback_type is not None:
                     raise InvalidFormat("Feedback-type is used multiple times")
+                if value not in {"auth-failure", "abuse", "fraud", "viurs", "other"}:
+                    value = "other"
                 forensic_report_data.feedback_type = value
             case "identity-alignment":
                 forensic_report_data.identity_alignment = value
@@ -618,9 +625,8 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                         raise InvalidFormat("") from _error
                 forensic_report_data.version = value
             case _:
-                print("Unknown: ", key, value)
+                # Silent ignore unknown key/values
                 continue
-                #raise UnknownKey(f"The report contains an unknown key ({key})")
 
     forensic_report.add_report_data(forensic_report_data)
     if not forensic_report.is_report_valid():
@@ -707,7 +713,7 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
                     raise InvalidFormat("Subject is used multiple times")
                 forensic_sample_data.subject = value
             case _:
-                print("Unknown: ", key, value)
+                # Silent ignore unknown key/values
                 continue
 
     forensic_report.add_sample_data(forensic_sample_data)
