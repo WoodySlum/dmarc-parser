@@ -14,7 +14,7 @@ from email import policy
 from email.message import EmailMessage
 from email.utils import parsedate_to_datetime, parseaddr
 
-from ipaddress import IPv4Address, IPv6Address, ip_address
+from ipaddress import ip_address
 
 from .misc import _sanitize_input
 from .exceptions import InvalidTime, InvalidOrgName, InvalidFormat
@@ -24,43 +24,82 @@ from .exceptions import InvalidForensicReport, InvalidForensicSample
 # https://datatracker.ietf.org/doc/html/rfc7489
 
 @dataclass
+class EmailAddress():
+    """ d """
+    address: str = None
+    name: str = None
+
+@dataclass
 class Metadata:
     """ d """
     org_name: str = None
-    email: str = None
+    email: EmailAddress = None
     report_id: str = None
     date_begin: datetime = None
     date_end: datetime = None
 
 @dataclass
+# pylint: disable-next=too-many-instance-attributes
 class PolicyPublished:
     """ d """
-    policy_domain: str = None
-    policy_adkim: str = None
-    policy_aspf: str = None
-    policy_p: str = None
-    policy_sp: str = None
-    policy_pct: int = None
+    domain: str = None
+    adkim: str = None
+    aspf: str = None
+    # pylint: disable-next=invalid-name
+    p: str = None
+    # pylint: disable-next=invalid-name
+    sp: str = None
+    pct: int = None
+
+@dataclass
+class DKIM:
+    """ d """
+    domain: str = None
+    selector : str = None
+    result: str = None # none / pass / fail / policy / neutral / temperror / permerror
+    human_result: str = None
+
+@dataclass
+class SPF:
+    """ SPF """
+    domain: str = None
+    result: str = None # none / neutral / pass / fail / softfail / temperror / permerror
+    scope: str = None # helo / mfrom
+
+@dataclass
+class Identifiers:
+    """ Identifiers """
+    header_from: str = None
+    envelope_from: str = None
+    envelope_to: str = None
+
+@dataclass
+class AuthResults:
+    """ Auth Results """
+    spf: SPF = None
+    dkim: DKIM = None
+
+@dataclass
+class PolicyEvaluated:
+    """ s """
+    dkim: str = None
+    disposition: str = None
+    spf: str = None
+
+@dataclass
+class Row:
+    """ d """
+    count: int = None
+    source_ip: str = None
+    policy_evaluated: PolicyEvaluated = None
 
 @dataclass
 # pylint: disable-next=too-many-instance-attributes
 class Record:
     """ d """
-    record_source_ipv4: IPv4Address = None
-    record_source_ipv6: IPv6Address = None
-    record_count: int = None
-
-    # Row / Policy Evaluated
-    record_eval_disposition: str = None
-    record_eval_dkim: str = None
-    record_eval_spf: str = None
-
-    # Identifiers
-    record_header_from: str = None
-
-    # Auth Results
-    record_spf_domain: str = None
-    record_spf_result: str = None
+    rows: list[Row] = None
+    identifiers: Identifiers = None
+    auth_results: AuthResults = None
 
 class AggregateReport():
     """
@@ -73,7 +112,7 @@ class AggregateReport():
         self.metadata = Metadata()
 
         # Policy published
-        self.policy = PolicyPublished()
+        self.policy_published = PolicyPublished()
 
         # Records
         self.records = []
@@ -90,7 +129,11 @@ class AggregateReport():
 
     def set_email(self, email):
         """ d """
-        self.metadata.email = _sanitize_input(email)
+        name, address = parseaddr(email)
+        self.metadata.email = EmailAddress(
+            address = _sanitize_input(address),
+            name = _sanitize_input(name)
+        )
 
     def set_report_id(self, report_id):
         """ d """
@@ -120,27 +163,29 @@ class AggregateReport():
 
     def set_policy_domain(self, domain):
         """ d """
-        self.policy.policy_domain = _sanitize_input(domain)
+        self.policy_published.domain = _sanitize_input(domain)
 
     def set_policy_adkim(self, adkim):
         """ d """
-        self.policy.policy_adkim = _sanitize_input(adkim)
+        self.policy_published.adkim = _sanitize_input(adkim)
 
-    def set_policy_aspf(self, policy_aspf):
+    def set_policy_aspf(self, aspf):
         """ d """
-        self.policy.policy_aspf = _sanitize_input(policy_aspf)
+        self.policy_published.aspf = _sanitize_input(aspf)
 
-    def set_policy_p(self, policy_p):
+    # pylint: disable-next=invalid-name
+    def set_policy_p(self, p):
         """ d """
-        self.policy.policy_p = _sanitize_input(policy_p)
+        self.policy_published.p = _sanitize_input(p)
 
-    def set_policy_sp(self, policy_sp):
+    # pylint: disable-next=invalid-name
+    def set_policy_sp(self, sp):
         """ d """
-        self.policy.policy_sp = _sanitize_input(policy_sp)
+        self.policy_published.sp = _sanitize_input(sp)
 
-    def set_policy_pct(self, policy_pct):
+    def set_policy_pct(self, pct):
         """ d """
-        self.policy.policy_pct = _sanitize_input(policy_pct)
+        self.policy_published.pct = _sanitize_input(pct)
 
     def add_record(self, record):
         """ d """
@@ -154,7 +199,7 @@ class AggregateReport():
         return {
             "report": {
                 "metadata": {**asdict(self.metadata)},
-                "policy": {**asdict(self.policy)},
+                "policy_published": {**asdict(self.policy_published)},
                 "records": [asdict(record) for record in self.records],
             },
         }
@@ -345,67 +390,110 @@ def aggregate_report_from_xml(xml: bytes) -> AggregateReport:
     aggregate_report.set_policy_pct(policy_pct)
 
     # Parse <records>
-    for record in root.findall("./record"):
-        # Row
-        ## Source ip
-        record_source_ip = record.find("row/source_ip")
-        # pylint: disable-next=line-too-long
-        record_source_ip = "" if record_source_ip is None or record_source_ip.text is None else record_source_ip.text
-        try:
-            ip_addr = ip_address(record_source_ip)
-        except ValueError:
-            continue
-        ipv4_addr = None
-        ipv6_addr = None
-        if isinstance(ip_addr, IPv4Address):
-            ipv4_addr = ip_addr
-        elif isinstance(ip_addr, IPv6Address):
-            ipv6_addr = ip_addr
-        ## Record cound
-        record_count = record.find("row/count")
-        record_count = 0 if record_count is None or record_count.text is None else record_count.text
+    for record in root.findall(".//record"):
+        # Rows
+        rows = []
+        for row in record.findall(".//row"):
+            ## Source ip
+            source_ip = row.find(".//source_ip")
+            source_ip = "" if source_ip is None or source_ip.text is None else source_ip.text
+            try:
+                _ = ip_address(source_ip)
+            except ValueError:
+                # Ignore row is IP format is invalid
+                continue
 
-        # Row / Policy Evaluated
-        ## Disposition
-        record_eval_disposition = record.find("row/policy_evaluated/disposition")
-        # pylint: disable-next=line-too-long
-        record_eval_disposition = "" if record_eval_disposition is None or record_eval_disposition.text is None else record_eval_disposition.text
-        ## Evaluated DKIM
-        record_eval_dkim = record.find("row/policy_evaluated/dkim")
-        # pylint: disable-next=line-too-long
-        record_eval_dkim = "" if record_eval_dkim is None or record_eval_dkim.text is None else record_eval_dkim.text
-        ## Evaluated SPF
-        record_eval_spf = record.find("row/policy_evaluated/spf")
-        # pylint: disable-next=line-too-long
-        record_eval_spf = "" if record_eval_spf is None or record_eval_spf is None else record_eval_spf.text
+            ## Record count
+            count = row.find(".//count")
+            count = 0 if count is None or count.text is None else count.text
+
+            # Row / Policy Evaluated
+            ## Disposition
+            eval_disposition = row.find(".//policy_evaluated/disposition")
+            # pylint: disable-next=line-too-long
+            eval_disposition = "" if eval_disposition is None or eval_disposition.text is None else eval_disposition.text
+
+            ## Evaluated DKIM
+            eval_dkim = row.find(".//policy_evaluated/dkim")
+            eval_dkim = "" if eval_dkim is None or eval_dkim.text is None else eval_dkim.text
+
+            ## Evaluated SPF
+            eval_spf = row.find(".//policy_evaluated/spf")
+            eval_spf = "" if eval_spf is None or eval_spf is None else eval_spf.text
+
+            rows.append(Row(
+                count = count,
+                source_ip = source_ip,
+                policy_evaluated = PolicyEvaluated(
+                    dkim = eval_dkim,
+                    disposition = eval_disposition,
+                    spf = eval_spf,
+                ),
+            ))
 
         # Identifiers
         ## Header-from
-        record_header_from = record.find("identifiers/header_from")
-        # pylint: disable-next=line-too-long
-        record_header_from = "" if record_header_from is None or record_header_from is None else record_header_from.text
+        header_from = record.find(".//identifiers/header_from")
+        header_from = "" if header_from is None or header_from is None else header_from.text
+        ## Envelope From
+        envelope_from = record.find(".//identifiers/envelope_from")
+        envelope_from = "" if envelope_from is None or envelope_from is None else envelope_from.text
+        ## Envelope To
+        envelope_to = record.find(".//identifiers/envelope_to")
+        envelope_to = "" if envelope_to is None or envelope_to is None else envelope_to.text
+
+        identifiers = Identifiers(
+            header_from = header_from,
+            envelope_from = envelope_from,
+            envelope_to = envelope_to,
+        )
 
         # Auth Results
         ## SPF Domain
-        record_spf_domain = record.find("auth_results/spf/domain")
-        # pylint: disable-next=line-too-long
-        record_spf_domain = "" if record_spf_domain is None or record_spf_domain.text is None else record_spf_domain.text
+        spf_domain = record.find(".//auth_results/spf/domain")
+        spf_domain = "" if spf_domain is None or spf_domain.text is None else spf_domain.text
         ## SPF Result
-        record_spf_result = record.find("auth_results/spf/result")
+        spf_result = record.find(".//auth_results/spf/result")
+        spf_result = "" if spf_result is None or spf_result.text is None else spf_result.text
+        ## SPF Scope
+        spf_scope = record.find(".//auth_results/spf/scope")
+        spf_scope = "" if spf_scope is None or spf_scope.text is None else spf_scope.text
+
+        ## DKIM Domain
+        dkim_domain = record.find(".//auth_results/dkim/domain")
+        dkim_domain = "" if dkim_domain is None or dkim_domain.text is None else dkim_domain.text
+        ## DKIM Selector
+        dkim_selector = record.find(".//auth_results/dkim/selector")
         # pylint: disable-next=line-too-long
-        record_spf_result = "" if record_spf_result is None or record_spf_result.text is None else record_spf_result.text
+        dkim_selector = "" if dkim_selector is None or dkim_selector.text is None else dkim_selector.text
+        ## DKIM Result
+        dkim_result = record.find(".//auth_results/dkim/result")
+        # pylint: disable-next=line-too-long
+        dkim_result = "" if dkim_result is None or dkim_result.text is None else dkim_result.text
+        ## DKIM Human Result
+        dkim_human_result = record.find(".//auth_results/dkim/human_result")
+        # pylint: disable-next=line-too-long
+        dkim_human_result = "" if dkim_human_result is None or dkim_human_result.text is None else dkim_human_result.text
+
+        auth_results = AuthResults(
+            spf = SPF(
+                domain = spf_domain,
+                result = spf_result,
+                scope = spf_scope,
+            ),
+            dkim = DKIM(
+                domain = dkim_domain,
+                selector = dkim_selector,
+                result = dkim_result,
+                human_result = dkim_human_result,
+            )
+        )
 
         aggregate_report.add_record(
             Record(
-                ipv4_addr,
-                ipv6_addr,
-                record_count,
-                record_eval_disposition,
-                record_eval_dkim,
-                record_eval_spf,
-                record_header_from,
-                record_spf_domain,
-                record_spf_result,
+                rows=rows,
+                identifiers=identifiers,
+                auth_results=auth_results
             )
         )
 
@@ -605,7 +693,7 @@ def forensic_report_from_string(report: str, sample: str) -> ForensicReport:
 
                 forensic_sample_data.received = _add_string(
                     received,
-                    value,
+                    info,
                 )
             case "to":
                 to_addresses = forensic_sample_data.to_addresses
