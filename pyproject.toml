@@ -5,8 +5,8 @@ description = 'Extract and parse DMARC reports/forensic feedback'
 readme = "README.md"
 authors = [{ name = "Anders Nauman" }]
 classifiers = [
-  Development Status :: 4 - Beta
-  License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
 ]
 
 [project.urls]
