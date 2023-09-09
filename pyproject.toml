@@ -1,7 +1,16 @@
 [project]
 name = "dmarcparser"
 version = "0.1"
-description = ''
+description = 'Extract and parse DMARC reports/forensic feedback'
+readme = "README.md"
+authors = [{ name = "Anders Nauman" }]
+classifiers = [
+  Development Status :: 4 - Beta
+  License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+]
+
+[project.urls]
+homepage = "https://github.com/andersnauman/dmarc-parser"
 
 [build-system]
 requires = ["setuptools >= 61.0.0", "wheel"]
