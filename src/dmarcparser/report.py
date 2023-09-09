@@ -148,7 +148,7 @@ class AggregateReport():
                 date_begin = 0
         if date_begin == 0 or datetime.fromtimestamp(date_begin) > datetime.now():
             raise InvalidTime("Date begin is in the future")
-        self.metadata.date_begin = date_begin
+        self.metadata.date_begin = datetime.fromtimestamp(date_begin)
 
     def set_date_end(self, date_end):
         """ d """
@@ -159,7 +159,7 @@ class AggregateReport():
                 date_end = 0
         if date_end == 0 or datetime.fromtimestamp(date_end) > datetime.now():
             raise InvalidTime("Date end is in the future")
-        self.metadata.date_end = date_end
+        self.metadata.date_end = datetime.fromtimestamp(date_end)
 
     def set_policy_domain(self, domain):
         """ d """
@@ -272,9 +272,7 @@ class ForensicReport():
         """ d """
         report = asdict(self.report_data)
         sample = asdict(self.sample_data)
-#        if isinstance(self.sample_data, EmailMessage):
-#            for key, value in self.sample_data.items():
-#                sample[key] = value
+
         return {"report": {**report}, "sample": {**sample}}
 
     def is_report_valid(self) -> bool:
