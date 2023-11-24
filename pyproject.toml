@@ -13,7 +13,7 @@ classifiers = [
 homepage = "https://github.com/andersnauman/dmarc-parser"
 
 [build-system]
-requires = ["setuptools >= 61.0.0", "wheel"]
+requires = ["setuptools >= 61.0.0", "wheel", "defusedxml >= 0.7.1"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

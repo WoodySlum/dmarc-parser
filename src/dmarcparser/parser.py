@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from zipfile import ZipFile, BadZipFile
 from gzip import GzipFile, BadGzipFile
 
-import xml.etree.ElementTree as elementTree
+import defusedxml.ElementTree as elementTree
 
 from .logger import _custom_logger
 from .logger import SYSLOG_TO_SCREEN, SYSLOG_TO_FILE

@@ -5,7 +5,7 @@
 
 import io
 import re
-import xml.etree.ElementTree as elementTree
+import defusedxml.ElementTree as elementTree
 
 from datetime import datetime
 from dataclasses import dataclass, asdict
