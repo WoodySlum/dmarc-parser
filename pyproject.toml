@@ -8,6 +8,9 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
 ]
+dependencies = [
+    "defusedxml == >= 0.7.1"
+]
 
 [project.urls]
 homepage = "https://github.com/andersnauman/dmarc-parser"
